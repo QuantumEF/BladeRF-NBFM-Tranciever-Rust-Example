@@ -34,8 +34,15 @@ fn main() {
         processed.extend(x);
     }
 
-    let scatter2 =
-        Scatter::new((0..processed.len()).collect_vec(), processed.clone()).mode(Mode::Markers);
+    processed.iter_mut().for_each(|x| *x *= 10.0);
+
+    let scatter2 = Scatter::new(
+        (0..processed.len())
+            .map(|x| (x as f32) / 10.0)
+            .collect_vec(),
+        processed.clone(),
+    )
+    .mode(Mode::Markers);
 
     let mut plot = Plot::new();
     plot.add_trace(scatter1);
