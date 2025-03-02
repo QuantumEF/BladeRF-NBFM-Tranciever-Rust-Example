@@ -30,32 +30,37 @@ impl<T: Copy + Zero + Mul<T, Output = T> + 'static, const N: usize, const INTERP
     //     })
     // }
 
-    pub fn process_testa(&mut self, sample: T, scratch: &mut Vec<T>) {
-        // let mut out: Vec<_> = Vec::with_capacity(self.interpolation_factor);
+    // pub fn process_testa(&mut self, sample: T, scratch: &mut Vec<T>) {
+    //     // let mut out: Vec<_> = Vec::with_capacity(self.interpolation_factor);
 
-        self.buffer.push_front(sample);
-        scratch.push(self.filter());
+    //     self.buffer.push_front(sample);
+    //     scratch.push(self.filter());
 
-        for _ in 1..INTERP_FAC {
-            self.buffer.push_front(T::zero());
-            scratch.push(self.filter());
-        }
-    }
+    //     for _ in 1..INTERP_FAC {
+    //         self.buffer.push_front(T::zero());
+    //         scratch.push(self.filter());
+    //     }
+    // }
 
     pub fn process_testb(&mut self, sample: T) -> [T; INTERP_FAC] {
         let mut intermediate_samples = [T::zero(); INTERP_FAC];
         intermediate_samples[0] = sample;
 
+        let mut counter = 0;
         intermediate_samples.map(|x| {
             self.buffer.push_front(x);
-            self.filter()
+            let out = self.filter(counter);
+            counter += 1;
+            out
         })
     }
 
-    fn filter(&mut self) -> T {
+    fn filter(&mut self, skip: usize) -> T {
         self.buffer
             .iter()
             .copied()
+            .skip(skip)
+            .step_by(INTERP_FAC)
             .zip(self.taps)
             .fold(T::zero(), |acc, (a, b)| (a * b) + acc)
     }
