@@ -18,21 +18,21 @@ fn main() {
 
     let mut buffer = CircularBuffer::new();
     buffer.fill(0.0);
-    let mut smth = IntegerInterpolator {
-        interpolation_factor: 10,
+    let mut smth: IntegerInterpolator<f32, 115, 10> = IntegerInterpolator {
         taps: MY_TAPS,
         buffer,
-        state: Cell::new(0.0),
     };
 
     let scatter1 = Scatter::new((0..samples.len()).collect(), samples.clone()).mode(Mode::Markers);
 
     let mut processed = Vec::with_capacity(5000);
 
-    for sample in samples {
-        let x = smth.process(sample);
-        processed.extend(x);
-    }
+    let process_iter = samples
+        .iter()
+        .copied()
+        .flat_map(|x| smth.process_testb(x).into_iter());
+
+    processed.extend(process_iter);
 
     processed.iter_mut().for_each(|x| *x *= 10.0);
 

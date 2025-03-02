@@ -4,40 +4,55 @@ use circular_buffer::CircularBuffer;
 use dasp::sample;
 use num::Zero;
 
-pub struct IntegerInterpolator<T: Copy> {
-    pub interpolation_factor: usize,
-    pub taps: [T; 115],
-    pub buffer: CircularBuffer<115, T>,
-    pub state: Cell<T>,
+pub struct IntegerInterpolator<T: Copy, const N: usize, const INTERP_FAC: usize> {
+    pub taps: [T; N],
+    pub buffer: CircularBuffer<N, T>,
 }
 
-impl<T: Copy + Zero + Mul<T, Output = T>> IntegerInterpolator<T> {
-    // pub fn process<I: Iterator<Item = T>>(
-    //     &mut self,
+impl<T: Copy + Zero + Mul<T, Output = T> + 'static, const N: usize, const INTERP_FAC: usize>
+    IntegerInterpolator<T, N, INTERP_FAC>
+{
+    // pub fn process<'a, 'b, I: Iterator<Item = T>>(
+    //     &'a mut self,
     //     samples: I,
-    // ) -> impl Iterator<Item = T> + use<'_, I, T> {
-    // samples.flat_map(|x| {
-    //     [x].into_iter()
-    //         .chain(iter::repeat_n(T::zero(), self.interpolation_factor - 1))
-    // })
-
+    //     scratch: &'b mut Vec<T>,
+    // ) -> impl Iterator<Item = T> + use<'a, 'b, I, T, N> {
+    //     samples.flat_map(|x| {
+    //         // [x].into_iter()
+    //         //     .chain(iter::repeat_n(T::zero(), self.interpolation_factor - 1))
+    //         self.buffer.push_front(x);
+    //         scratch.push(self.filter());
+    //         for _ in 1..self.interpolation_factor {
+    //             self.buffer.push_front(T::zero());
+    //             scratch.push(self.filter());
+    //         }
+    //         scratch.iter().copied()
+    //     })
     // }
 
-    pub fn process(&mut self, sample: T) -> Vec<T> {
-        let mut out = Vec::with_capacity(self.interpolation_factor);
+    pub fn process_testa(&mut self, sample: T, scratch: &mut Vec<T>) {
+        // let mut out: Vec<_> = Vec::with_capacity(self.interpolation_factor);
 
         self.buffer.push_front(sample);
-        out.push(self.interp());
+        scratch.push(self.filter());
 
-        for _ in 1..self.interpolation_factor {
+        for _ in 1..INTERP_FAC {
             self.buffer.push_front(T::zero());
-            out.push(self.interp());
+            scratch.push(self.filter());
         }
-
-        out
     }
 
-    fn interp(&mut self) -> T {
+    pub fn process_testb(&mut self, sample: T) -> [T; INTERP_FAC] {
+        let mut intermediate_samples = [T::zero(); INTERP_FAC];
+        intermediate_samples[0] = sample;
+
+        intermediate_samples.map(|x| {
+            self.buffer.push_front(x);
+            self.filter()
+        })
+    }
+
+    fn filter(&mut self) -> T {
         self.buffer
             .iter()
             .copied()
@@ -68,21 +83,25 @@ mod tests {
 
         let mut buffer = CircularBuffer::new();
         buffer.fill(0.0);
-        let mut smth = IntegerInterpolator {
-            interpolation_factor: 3,
+        let mut smth: IntegerInterpolator<f32, 115, 3> = IntegerInterpolator {
             taps: MY_TAPS,
             buffer,
-            state: Cell::new(0.0),
         };
 
         let scatter1 = Scatter::new((0..samples.len()).collect(), samples.clone());
 
         let mut processed = Vec::with_capacity(100000);
 
-        for sample in samples {
-            let x = smth.process(sample);
-            processed.push(x);
-        }
+        let process_iter = samples
+            .iter()
+            .copied()
+            .flat_map(|x| smth.process_testb(x).into_iter());
+
+        processed.extend(process_iter);
+
+        // for sample in samples {
+        //     smth.process_testa(sample, &mut scratch);
+        // }
 
         let scatter2 = Scatter::new((0..processed.len()).collect_vec(), processed.clone());
 
@@ -90,7 +109,8 @@ mod tests {
         plot.add_trace(scatter1);
         plot.add_trace(scatter2);
 
-        plot.show();
+        // plot.show();
+        plot.write_html("test.html");
         // let out: Vec<i32> = smth.process(samples.into_iter()).collect();
         // assert_eq!(
         //     &out,
