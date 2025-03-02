@@ -60,8 +60,8 @@ impl<T: Copy + Zero + Mul<T, Output = T> + 'static, const N: usize, const INTERP
             .iter()
             .copied()
             .skip(skip)
-            .step_by(INTERP_FAC)
             .zip(self.taps)
+            .step_by(INTERP_FAC)
             .fold(T::zero(), |acc, (a, b)| (a * b) + acc)
     }
 }
