@@ -54,7 +54,7 @@ fn main() -> Result<()> {
     let mut tx_circ_buffer_b = CircularBuffer::new();
     tx_circ_buffer_b.fill(0.0);
 
-    let mut transmitter: Transmit<Transmitting, f32, 141, 5, 11> = Transmit {
+    let mut transmitter: Transmit<Transmitting, f32, 141, 4, 4> = Transmit {
         modulator: QuadratureMod::with_kf(args.kf, 1.0 / SAMPLE_RATE),
         interpolator_a: IntegerInterpolator {
             taps: MY_TAPS_44100_20,
@@ -67,15 +67,22 @@ fn main() -> Result<()> {
         _p: PhantomData::<Transmitting>,
     };
 
-    // let mut output_buffer = Vec::with_capacity(audio_samples.len() * 11 * 20);
+    let mut output_buffer = Vec::with_capacity(audio_samples.len() * 11 * 20);
 
     println!("Processing");
 
+    use std::time::Instant;
+    let now = Instant::now();
+
     let tx_process = transmitter.process(&audio_samples);
+
+    output_buffer.extend(tx_process);
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
 
     let mut output_file = File::create_buffered(args.output_file)?;
 
-    for iq_sample in tx_process {
+    for iq_sample in output_buffer {
         let sample_bytes: [u8; 8] = unsafe { transmute(iq_sample) };
         output_file.write_all(&sample_bytes)?;
         // let a = iq_sample.re;
