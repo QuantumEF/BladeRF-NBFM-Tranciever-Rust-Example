@@ -1,11 +1,21 @@
+#![feature(file_buffered)]
+
 use std::{
     fs::File,
     io::{Error, ErrorKind, Result, Write},
+    marker::PhantomData,
     mem::transmute,
     path::PathBuf,
 };
 
-use bladerf_nbfm_transceiver::{quadrature_demod::QuadratureDemod, quadrature_mod::QuadratureMod};
+use bladerf_nbfm_transceiver::{
+    MY_TAPS_44100_20, MY_TAPS_882000_11,
+    integer_interpolator::IntegerInterpolator,
+    quadrature_demod::QuadratureDemod,
+    quadrature_mod::QuadratureMod,
+    transmit::{Transmit, Transmitting},
+};
+use circular_buffer::CircularBuffer;
 use clap::Parser;
 use hound::{WavReader, WavSpec, WavWriter};
 use num::complex::Complex32;
@@ -29,51 +39,48 @@ fn main() -> Result<()> {
     let mut audio = WavReader::new(wav_file)
         .map_err(|err| Error::new(ErrorKind::InvalidData, format!("{err}")))?;
 
-    // let samples: Vec<i16> = audio.samples::<i16>().map(|x| x.unwrap()).collect();
-    let samples: Vec<f32> = audio
+    let audio_samples: Vec<f32> = audio
         .samples::<i16>()
         .map(|x| x.unwrap())
         .map(|x| f32::from(x) / (f32::from(i16::MAX)))
         .collect();
 
-    const SAMPLE_RATE: f32 = 100_000.0;
-    let modulator = QuadratureMod::with_kf(args.kf, 1.0 / SAMPLE_RATE);
+    const SAMPLE_RATE: f32 = 44100.0 * 20.0 * 11.0;
 
-    let mut modulated = Vec::<Complex32>::with_capacity(samples.len());
+    let mut tx_circ_buffer_a = CircularBuffer::new();
+    tx_circ_buffer_a.fill(0.0);
+    let mut tx_circ_buffer_b = CircularBuffer::new();
+    tx_circ_buffer_b.fill(0.0);
 
-    for sample in samples {
-        modulated.push(modulator.step(sample));
-    }
-
-    let mut demod = Vec::new();
-
-    let quad_demod = QuadratureDemod::new(0.0);
-    for sample in modulated {
-        let x = quad_demod.process(sample);
-        demod.push(x);
-    }
-
-    let mut output_file = File::create(args.output_file)?;
-
-    let mut wvae_write = WavWriter::new(
-        &mut output_file,
-        WavSpec {
-            channels: 1,
-            sample_rate: 100000,
-            bits_per_sample: 16,
-            sample_format: hound::SampleFormat::Int,
+    let mut transmitter: Transmit<Transmitting, f32, 141, 20, 11> = Transmit {
+        modulator: QuadratureMod::with_kf(args.kf, 1.0 / SAMPLE_RATE),
+        interpolator_a: IntegerInterpolator {
+            taps: MY_TAPS_44100_20,
+            buffer: tx_circ_buffer_a,
         },
-    )
-    .map_err(|x| Error::new(ErrorKind::Other, format!("{x}")))?;
+        interpolator_b: IntegerInterpolator {
+            taps: MY_TAPS_882000_11,
+            buffer: tx_circ_buffer_b,
+        },
+        _p: PhantomData::<Transmitting>,
+    };
 
-    let mut x = wvae_write.get_i16_writer(demod.len() as u32);
-    for samp in demod {
-        let ns = samp * i16::MAX as f32;
-        x.write_sample(ns as i16);
+    // let mut output_buffer = Vec::with_capacity(audio_samples.len() * 11 * 20);
+
+    println!("Processing");
+    let tx_process = transmitter.process(&audio_samples);
+
+    let mut output_file = File::create_buffered(args.output_file)?;
+
+    for iq_sample in tx_process {
+        let a = iq_sample.re;
+        let b = iq_sample.im;
+        output_file.write_all(a.to_le_bytes().as_slice())?;
+        output_file.write_all(b.to_le_bytes().as_slice())?;
     }
+    println!("Finishing");
 
-    x.flush().unwrap();
-    // output_file.flush();
+    output_file.flush()?;
 
     // println!("Mod sample count: {}", modulated.len());
 
