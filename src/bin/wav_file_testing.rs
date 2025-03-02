@@ -76,10 +76,12 @@ fn main() -> Result<()> {
     let mut output_file = File::create_buffered(args.output_file)?;
 
     for iq_sample in tx_process {
-        let a = iq_sample.re;
-        let b = iq_sample.im;
-        output_file.write_all(a.to_le_bytes().as_slice())?;
-        output_file.write_all(b.to_le_bytes().as_slice())?;
+        let sample_bytes: [u8; 8] = unsafe { transmute(iq_sample) };
+        output_file.write_all(&sample_bytes)?;
+        // let a = iq_sample.re;
+        // let b = iq_sample.im;
+        // output_file.write_all(a.to_le_bytes().as_slice())?;
+        // output_file.write_all(b.to_le_bytes().as_slice())?;
     }
     println!("Finishing");
 
