@@ -47,6 +47,8 @@ fn main() -> Result<()> {
 
     const SAMPLE_RATE: f32 = 44100.0 * 20.0 * 11.0;
 
+    //why the hell is the output rate closer to 20702000
+
     let mut tx_circ_buffer_a = CircularBuffer::new();
     tx_circ_buffer_a.fill(0.0);
     let mut tx_circ_buffer_b = CircularBuffer::new();

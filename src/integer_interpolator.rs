@@ -75,11 +75,8 @@ mod tests {
 
     #[test]
     fn interp_test() {
-        // let samples = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
-        let samples = (0..100000)
-            .map(|x| f32::sin(2.0 * PI * (x as f32)))
-            .collect_vec();
+        // let samples = [1.0_f32, 1.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 1.0];
+        let samples = [1.0_f32; 10];
 
         let mut buffer = CircularBuffer::new();
         buffer.fill(0.0);
@@ -88,36 +85,13 @@ mod tests {
             buffer,
         };
 
-        let scatter1 = Scatter::new((0..samples.len()).collect(), samples.clone());
-
-        let mut processed = Vec::with_capacity(100000);
-
-        let process_iter = samples
+        let out: Vec<_> = samples
             .iter()
             .copied()
-            .flat_map(|x| smth.process_testb(x).into_iter());
+            .flat_map(|x| smth.process_testb(x).into_iter())
+            .collect();
 
-        processed.extend(process_iter);
-
-        // for sample in samples {
-        //     smth.process_testa(sample, &mut scratch);
-        // }
-
-        let scatter2 = Scatter::new((0..processed.len()).collect_vec(), processed.clone());
-
-        let mut plot = Plot::new();
-        plot.add_trace(scatter1);
-        plot.add_trace(scatter2);
-
-        // plot.show();
-        plot.write_html("test.html");
-        // let out: Vec<i32> = smth.process(samples.into_iter()).collect();
-        // assert_eq!(
-        //     &out,
-        //     &[
-        //         1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0, 5, 0, 0, 6, 0, 0, 7, 0, 0, 8, 0, 0, 9, 0, 0,
-        //         10, 0, 0
-        //     ]
-        // );
+        assert_eq!(samples.len() * 3, out.len());
+        println!("Out: {out:#?}");
     }
 }
