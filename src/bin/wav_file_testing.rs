@@ -54,7 +54,7 @@ fn main() -> Result<()> {
     let mut tx_circ_buffer_b = CircularBuffer::new();
     tx_circ_buffer_b.fill(0.0);
 
-    let mut transmitter: Transmit<Transmitting, f32, 141, 20, 11> = Transmit {
+    let mut transmitter: Transmit<Transmitting, f32, 141, 5, 11> = Transmit {
         modulator: QuadratureMod::with_kf(args.kf, 1.0 / SAMPLE_RATE),
         interpolator_a: IntegerInterpolator {
             taps: MY_TAPS_44100_20,
@@ -70,6 +70,7 @@ fn main() -> Result<()> {
     // let mut output_buffer = Vec::with_capacity(audio_samples.len() * 11 * 20);
 
     println!("Processing");
+
     let tx_process = transmitter.process(&audio_samples);
 
     let mut output_file = File::create_buffered(args.output_file)?;
