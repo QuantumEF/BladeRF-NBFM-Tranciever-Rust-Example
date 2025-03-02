@@ -1,4 +1,4 @@
-use std::{cell::Cell, collections::VecDeque, iter, ops::Mul};
+use std::{cell::Cell, collections::VecDeque, fmt::Debug, iter, ops::Mul};
 
 use circular_buffer::CircularBuffer;
 use dasp::sample;
@@ -9,7 +9,7 @@ pub struct IntegerInterpolator<T: Copy, const N: usize, const INTERP_FAC: usize>
     pub buffer: CircularBuffer<N, T>,
 }
 
-impl<T: Copy + Zero + Mul<T, Output = T> + 'static, const N: usize, const INTERP_FAC: usize>
+impl<T: Copy + Zero + Mul<T, Output = T> + Debug + 'static, const N: usize, const INTERP_FAC: usize>
     IntegerInterpolator<T, N, INTERP_FAC>
 {
     // pub fn process<'a, 'b, I: Iterator<Item = T>>(
@@ -56,11 +56,12 @@ impl<T: Copy + Zero + Mul<T, Output = T> + 'static, const N: usize, const INTERP
     }
 
     fn filter(&mut self, skip: usize) -> T {
+        // println!("Circ Buf {skip}: {:?}", self.buffer);
         self.buffer
             .iter()
             .copied()
-            .skip(skip)
             .zip(self.taps)
+            .skip(skip)
             .step_by(INTERP_FAC)
             .fold(T::zero(), |acc, (a, b)| (a * b) + acc)
     }
@@ -98,5 +99,13 @@ mod tests {
 
         assert_eq!(samples.len() * 3, out.len());
         println!("Out: {out:#?}");
+    }
+
+    #[test]
+    fn interp_scratch() {
+        let x = [1, 2, 3, 4, 5, 6, 7, 8, 9].into_iter();
+        #[allow(clippy::iter_skip_zero)]
+        let mut y = x.skip(0).step_by(2);
+        println!("{:#?}", y.collect_vec())
     }
 }
