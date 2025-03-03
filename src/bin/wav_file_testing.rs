@@ -18,7 +18,7 @@ use bladerf::{
 use bladerf::Error as BrfError;
 
 use bladerf_nbfm_transceiver::{
-    MY_TAPS_44100_20, MY_TAPS_882000_11,
+    MY_TAPS_44100_20, MY_TAPS_882000_11, SHARP_TAPS,
     integer_interpolator::IntegerInterpolator,
     quadrature_demod::QuadratureDemod,
     quadrature_mod::QuadratureMod,
@@ -67,14 +67,14 @@ fn main() -> Result<()> {
     let mut tx_circ_buffer_b = CircularBuffer::new();
     tx_circ_buffer_b.fill(0.0);
 
-    let mut transmitter: Transmit<Transmitting, f32, 141, 4, 4> = Transmit {
+    let mut transmitter: Transmit<Transmitting, f32, 461, 4, 4> = Transmit {
         modulator: QuadratureMod::with_kf(args.kf, 1.0 / SAMPLE_RATE),
         interpolator_a: IntegerInterpolator {
-            taps: MY_TAPS_44100_20,
+            taps: SHARP_TAPS,
             buffer: tx_circ_buffer_a,
         },
         interpolator_b: IntegerInterpolator {
-            taps: MY_TAPS_882000_11,
+            taps: SHARP_TAPS,
             buffer: tx_circ_buffer_b,
         },
         _p: PhantomData::<Transmitting>,
@@ -101,7 +101,7 @@ fn main() -> Result<()> {
         .set_sample_rate(Channel::Tx0, 1411200)
         .map_err(my_brf_error)?;
 
-    device.set_gain(Channel::Tx0, 73).map_err(my_brf_error)?;
+    device.set_gain(Channel::Tx0, 50).map_err(my_brf_error)?;
 
     let sync_confg = SyncConfig::default();
 
