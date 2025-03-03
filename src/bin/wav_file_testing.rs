@@ -101,7 +101,7 @@ fn main() -> Result<()> {
         .set_sample_rate(Channel::Tx0, 1411200)
         .map_err(my_brf_error)?;
 
-    device.set_gain(Channel::Tx0, 50).map_err(my_brf_error)?;
+    device.set_gain(Channel::Tx0, 70).map_err(my_brf_error)?;
 
     let sync_confg = SyncConfig::default();
 
