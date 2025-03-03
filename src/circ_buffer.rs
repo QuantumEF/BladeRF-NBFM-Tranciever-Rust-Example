@@ -17,7 +17,9 @@ impl<T: Copy, const N: usize> MyCircBuf<T, N> {
         if self.pos.get() == (N - 1) {
             self.pos.set(0);
         } else {
-            self.pos.update(|x| x + 1);
+            // self.pos.update(|x| x + 1);
+            let newpos = self.pos.get() + 1;
+            self.pos.set(newpos);
         }
     }
 

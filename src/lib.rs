@@ -1,4 +1,4 @@
-#![feature(cell_update)]
+// #![feature(cell_update)]
 
 pub mod circ_buffer;
 pub mod integer_interpolator;

@@ -1,4 +1,4 @@
-#![feature(file_buffered)]
+// #![feature(file_buffered)]
 
 use std::{
     fs::File,
@@ -94,9 +94,15 @@ fn main() -> Result<()> {
         .try_into()
         .map_err(my_brf_error)?;
 
+    let gr = device.get_gain_range(Channel::Tx0).map_err(my_brf_error)?;
+    println!("Gain ranges: {gr:#?}");
+
     device
         .set_sample_rate(Channel::Tx0, 1411200)
         .map_err(my_brf_error)?;
+
+    device.set_gain(Channel::Tx0, 73).map_err(my_brf_error)?;
+
     let sync_confg = SyncConfig::default();
 
     let xb200 = device.get_xb200().map_err(my_brf_error)?;
@@ -108,7 +114,7 @@ fn main() -> Result<()> {
         .map_err(my_brf_error)?;
 
     device
-        .set_frequency(Channel::Tx0, 147_000_000)
+        .set_frequency(Channel::Tx0, 147_555_000)
         .map_err(my_brf_error)?;
 
     let streamer = device
