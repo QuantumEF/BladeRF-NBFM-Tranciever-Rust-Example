@@ -16,3 +16,4 @@ itertools = "0.14.0"
 num = "0.4.3"
 plotly = "0.12.1"
 symphonia = "0.5.4"
+bladerf = { path = "../seify-bladerf" }
