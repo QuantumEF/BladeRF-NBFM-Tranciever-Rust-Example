@@ -1,10 +1,11 @@
 use anyhow::{Context, Ok};
 use bladerf::{
     BladeRF, BladeRf1, BladeRfAny, ChannelLayoutRx, ComplexI16, Direction, RxChannel, SyncConfig,
+    brf_ci16_to_cf32,
     expansion_boards::{Xb200Filter, Xb200Path},
 };
 use bladerf_nbfm_transceiver::{
-    self, SHARP_TAPS,
+    self, MY_TAPS, SHARP_TAPS,
     conv::{ConvIter, ConvIterable},
     quadrature_demod::QuadratureDemod,
 };
@@ -30,7 +31,7 @@ enum CliChannel {
     Ch1,
 }
 
-const SAMPLES_PER_BLOCK: usize = 8192;
+const SAMPLES_PER_BLOCK: usize = 8000;
 
 const RF_RATE: usize = 1_764_000;
 const AUDIO_RATE: usize = 44100;
@@ -127,7 +128,7 @@ fn main() -> anyhow::Result<()> {
 
     log::debug!("Sample rate set to {}", RF_RATE);
 
-    let config = SyncConfig::new(16, SAMPLES_PER_BLOCK, 8, Duration::from_secs(3))
+    let config = SyncConfig::new(16, 8192, 8, Duration::from_secs(3))
         .with_context(|| "Cannot Create Sync Config")?;
     let reciever = dev
         .rx_streamer::<ComplexI16>(config)
@@ -167,16 +168,20 @@ fn main() -> anyhow::Result<()> {
             .read(&mut buffer, Duration::from_secs(1))
             .with_context(|| "Cannot Read Samples")?;
 
+        // println!("audio len - init {}", audio.len());
+
         audio.extend(
             buffer
                 .into_iter()
-                .map(|x| Complex32::new(x.re.into(), x.im.into()) / (4096.0))
-                .conv_iter(SHARP_TAPS, Complex32::zero())
+                .map(brf_ci16_to_cf32)
+                // .conv_iter(MY_TAPS, Complex32::zero())
                 .map(|x| quad_demod.process(x))
-                .conv_iter(SHARP_TAPS, 0.0)
+                // .conv_iter(SHARP_TAPS, 0.0)
                 .step_by(DECIMATION)
-                .map(|x| (x * i16::MAX as f32 * 10.0) as i16),
+                .map(|x| (x * i16::MAX as f32 * 0.10) as i16),
         );
+
+        // println!("audio len - post {}", audio.len());
 
         if !args.noprogress {
             progress.inc(SAMPLES_PER_BLOCK as u64 * size_of::<ComplexI16>() as u64);

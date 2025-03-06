@@ -36,6 +36,15 @@ impl<T: Copy + 'static, S: Copy + Mul<T, Output = S> + Add<S, Output = S> + 'sta
                 .fold(self.initial_value, |acc, (a, b)| (b * a) + acc)
         })
     }
+
+    pub fn filter_sample(&mut self, sample: S) -> S {
+        self.buf.push_front(sample);
+        self.taps
+            .iter()
+            .copied()
+            .zip(self.buf.iter().copied())
+            .fold(self.initial_value, |acc, (a, b)| (b * a) + acc)
+    }
 }
 
 impl<
