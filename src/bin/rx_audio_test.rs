@@ -7,6 +7,7 @@ use bladerf::{
 use bladerf_nbfm_transceiver::{
     self, MY_TAPS, SHARP_TAPS,
     conv::{ConvIter, ConvIterable},
+    keep_1_in_n::Keep1InN,
     quadrature_demod::QuadratureDemod,
 };
 use hound::{WavSpec, WavWriter};
@@ -158,8 +159,9 @@ fn main() -> anyhow::Result<()> {
     .unwrap();
     let progress = ProgressBar::no_length().with_style(bar_style);
 
-    let quad_demod = QuadratureDemod::new(0.0);
-    // let fir_lpf = ConvIter::new(SHARP_TAPS, 0.0_f32);
+    let quad_demod = QuadratureDemod::new(Complex32::zero());
+    let decimator = Keep1InN::<DECIMATION>::new();
+    let mut filter = ConvIter::new(SHARP_TAPS, Complex32::zero());
 
     let mut audio = Vec::with_capacity(AUDIO_RATE * 30);
 
@@ -174,11 +176,10 @@ fn main() -> anyhow::Result<()> {
             buffer
                 .into_iter()
                 .map(brf_ci16_to_cf32)
-                // .conv_iter(MY_TAPS, Complex32::zero())
-                .map(|x| quad_demod.process(x))
-                // .conv_iter(SHARP_TAPS, 0.0)
-                .step_by(DECIMATION)
-                .map(|x| (x * i16::MAX as f32 * 0.10) as i16),
+                .map(|x| filter.filter_sample(x))
+                .map(|sample| quad_demod.process(sample))
+                .filter(|_| decimator.test_keep())
+                .map(|x| (x * i16::MAX as f32 * 10.0) as i16),
         );
 
         // println!("audio len - post {}", audio.len());
