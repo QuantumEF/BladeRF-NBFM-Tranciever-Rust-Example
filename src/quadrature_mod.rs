@@ -27,10 +27,10 @@ impl QuadratureMod<f32> {
         // let new_phase = self
         //     .phase_accumulator
         //     .update(|x| x + (2.0 * PI * self.k_f * self.sample_time * sample));
-        let new_phase =
-            self.phase_accumulator.get() + (2.0 * PI * self.k_f * self.sample_time * sample);
+        let old_phase = self.phase_accumulator.get();
+        let new_phase = old_phase + (2.0 * PI * self.k_f * self.sample_time * sample);
         self.phase_accumulator.set(new_phase);
-        Complex32::from_polar(1.0, new_phase)
+        Complex32::from_polar(0.7, old_phase)
     }
 
     pub fn reset(&self) {

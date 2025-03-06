@@ -84,9 +84,11 @@ mod tests {
         // let samples = [1.0_f32, 1.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 1.0];
         let samples = [1.0_f32; 10];
 
+        const INTERP: usize = 12;
+
         let mut buffer = CircularBuffer::new();
         buffer.fill(0.0);
-        let mut smth: IntegerInterpolator<f32, 115, 3> = IntegerInterpolator {
+        let mut smth: IntegerInterpolator<f32, 115, INTERP> = IntegerInterpolator {
             taps: MY_TAPS,
             buffer,
         };
@@ -97,7 +99,7 @@ mod tests {
             .flat_map(|x| smth.process_testb(x).into_iter())
             .collect();
 
-        assert_eq!(samples.len() * 3, out.len());
+        assert_eq!(samples.len() * INTERP, out.len());
         println!("Out: {out:#?}");
     }
 

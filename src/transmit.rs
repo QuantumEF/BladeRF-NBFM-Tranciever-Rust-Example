@@ -25,6 +25,7 @@ impl<const N: usize, const INTFA: usize, const INTFB: usize>
             .copied()
             .flat_map(|x| self.interpolator_a.process_testb(x).into_iter())
             .flat_map(|x| self.interpolator_b.process_testb(x));
+        // .map(|x| x * (INTFA * INTFB) as f32);
 
         let modulated = interpolated_floats.map(|x| self.modulator.step(x));
 
