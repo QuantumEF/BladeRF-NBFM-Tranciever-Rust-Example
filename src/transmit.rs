@@ -1,34 +1,55 @@
 use std::marker::PhantomData;
 
-use num::complex::Complex32;
+use itertools::Itertools;
+use num::{Complex, complex::Complex32, traits::ConstZero};
 
-use crate::{integer_interpolator::IntegerInterpolator, quadrature_mod::QuadratureMod};
+use crate::{
+    conv::ConvIter, integer_interpolator::IntegerInterpolator, quadrature_mod::QuadratureMod,
+    zero_pad::Pad,
+};
 
-pub struct Transmitting();
-struct Idle();
-
-pub struct Transmit<State, T: Copy, const N: usize, const INTFA: usize, const INTFB: usize> {
-    pub modulator: QuadratureMod<T>,
-    pub interpolator_a: IntegerInterpolator<T, N, INTFA>,
-    pub interpolator_b: IntegerInterpolator<T, N, INTFB>,
-    pub _p: PhantomData<State>,
+pub struct TransmitChain<T: Copy, const N: usize> {
+    modulator: QuadratureMod<T>,
+    filter_a: ConvIter<T, T, N>,
+    filter_b: ConvIter<T, T, N>,
+    pad_a: Pad<T>,
+    pad_b: Pad<T>,
+    audio_gain: T,
 }
 
-impl<const N: usize, const INTFA: usize, const INTFB: usize>
-    Transmit<Transmitting, f32, N, INTFA, INTFB>
-{
-    pub fn process(&mut self, samples: &[f32]) -> impl Iterator<Item = Complex32> {
-        // buffer.clear();
+impl<const N: usize> TransmitChain<f32, N> {
+    pub fn new(
+        kf: f32,
+        sample_rate: f32,
+        taps_a: [f32; N],
+        taps_b: [f32; N],
+        interp_fac_a: usize,
+        interp_fac_b: usize,
+        audio_gain: f32,
+    ) -> Self {
+        Self {
+            modulator: QuadratureMod::with_kf(kf, 1.0 / sample_rate),
+            filter_a: ConvIter::new(taps_a, 0.0),
+            filter_b: ConvIter::new(taps_b, 0.0),
+            pad_a: Pad::new(0.0, interp_fac_a - 1),
+            pad_b: Pad::new(0.0, interp_fac_b - 1),
+            audio_gain,
+        }
+    }
 
-        let interpolated_floats = samples
+    pub fn process(&mut self, samples: &[f32]) -> impl Iterator<Item = Complex32> {
+        samples
             .iter()
             .copied()
-            .flat_map(|x| self.interpolator_a.process_testb(x).into_iter())
-            .flat_map(|x| self.interpolator_b.process_testb(x));
-        // .map(|x| x * (INTFA * INTFB) as f32);
-
-        let modulated = interpolated_floats.map(|x| self.modulator.step(x));
-
-        modulated
+            // first interpolation and filter
+            .flat_map(|x| self.pad_a.pad_sample(x))
+            .map(|x| self.filter_a.filter_sample(x))
+            // seconds interpolation and filter
+            .flat_map(|x| self.pad_b.pad_sample(x))
+            .map(|x| self.filter_b.filter_sample(x))
+            // Amplify Audio signal
+            .map(|x| x * self.audio_gain)
+            // modulate
+            .map(|x| self.modulator.step(x))
     }
 }

@@ -20,10 +20,8 @@ use bladerf::Result as BrfResult;
 
 use bladerf_nbfm_transceiver::{
     AUDIO_TAPS, MY_TAPS_44100_20, MY_TAPS_882000_11, SHARP_TAPS,
-    integer_interpolator::IntegerInterpolator,
-    quadrature_demod::QuadratureDemod,
-    quadrature_mod::QuadratureMod,
-    transmit::{Transmit, Transmitting},
+    integer_interpolator::IntegerInterpolator, quadrature_demod::QuadratureDemod,
+    quadrature_mod::QuadratureMod, transmit::TransmitChain,
 };
 use circular_buffer::CircularBuffer;
 use clap::Parser;
@@ -41,12 +39,12 @@ fn my_brf_error(err: BrfError) -> Error {
     Error::new(ErrorKind::Other, format!("Bladerf Error: {err}"))
 }
 
-fn get_device(rate: u32, gain: i32) -> BrfResult<BladeRf1> {
+fn get_device(rate: u32, rf_gain: i32) -> BrfResult<BladeRf1> {
     let device: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
 
     device.set_sample_rate(Channel::Tx0, rate)?;
 
-    device.set_gain(Channel::Tx0, gain)?;
+    device.set_gain(Channel::Tx0, rf_gain)?;
 
     let xb200 = device.get_xb200()?;
     xb200.set_path(Direction::TX, Xb200Path::Mix)?;
@@ -56,12 +54,13 @@ fn get_device(rate: u32, gain: i32) -> BrfResult<BladeRf1> {
     Ok(device)
 }
 
+/// The following works ok i guess; cargo run --release --bin wav_file_testing -- kn4vhm_test_mono_2.5k.wav 15700.0 70
 #[derive(Debug, Parser)]
 struct Args {
     wave_file: PathBuf,
-    output_file: PathBuf,
+    // output_file: PathBuf,
     kf: f32,
-    gain: i32,
+    rf_gain: i32,
 }
 
 fn main() -> Result<()> {
@@ -76,14 +75,21 @@ fn main() -> Result<()> {
     assert_eq!(wavspec.channels, 1);
     println!("Wavespec: {wavspec:#?}");
 
-    let audio_samples: Vec<f32> = audio
+    let mut audio_samples: Vec<f32> = audio
         .samples::<i16>()
         .map(|x| x.unwrap())
-        .map(|x| f32::from(x) / (10.0 * f32::from(i16::MAX)))
+        .map(|x| f32::from(x) / (1.0 * f32::from(i16::MAX)))
         .collect();
 
-    for sample in audio_samples.iter() {
-        assert!(*sample < 1.0)
+    let audio_max_val = audio_samples
+        .iter()
+        .copied()
+        .max_by(|a, b| a.total_cmp(b))
+        .unwrap();
+
+    for sample in audio_samples.iter_mut() {
+        *sample *= audio_max_val * 0.5;
+        // assert!(*sample < 0.5)
     }
 
     let audio_samples = Array1::from_vec(audio_samples);
@@ -104,33 +110,21 @@ fn main() -> Result<()> {
     const INTERPOLATION_B: usize = 4;
     const SAMPLE_RATE: usize = AUDIO_RATE * INTERPOLATION_A * INTERPOLATION_B;
 
-    let mut tx_circ_buffer_a = CircularBuffer::new();
-    tx_circ_buffer_a.fill(0.0);
-    let mut tx_circ_buffer_b = CircularBuffer::new();
-    tx_circ_buffer_b.fill(0.0);
+    let mut transmit_chain = TransmitChain::new(
+        args.kf,
+        SAMPLE_RATE as f32,
+        SHARP_TAPS,
+        SHARP_TAPS,
+        INTERPOLATION_A,
+        INTERPOLATION_B,
+        (INTERPOLATION_A * INTERPOLATION_B) as f32,
+    );
 
-    let modulator = QuadratureMod::with_kf(args.kf, 1.0);
-    // let modulator = QuadratureMod::with_kf(args.kf, 1.0 / (SAMPLE_RATE as f32));
-
-    let mut transmitter: Transmit<Transmitting, f32, 461, INTERPOLATION_A, INTERPOLATION_B> =
-        Transmit {
-            modulator,
-            interpolator_a: IntegerInterpolator {
-                taps: SHARP_TAPS,
-                buffer: tx_circ_buffer_a,
-            },
-            interpolator_b: IntegerInterpolator {
-                taps: SHARP_TAPS,
-                buffer: tx_circ_buffer_b,
-            },
-            _p: PhantomData::<Transmitting>,
-        };
-
-    let mut tx_process = transmitter.process(&audio_samples);
+    let mut tx_process = transmit_chain.process(&audio_samples);
 
     println!("Processing");
 
-    let device = get_device(SAMPLE_RATE as u32, args.gain).map_err(my_brf_error)?;
+    let device = get_device(SAMPLE_RATE as u32, args.rf_gain).map_err(my_brf_error)?;
 
     let sync_confg = SyncConfig::new(64, 8192, 8, Duration::from_secs(1)).map_err(my_brf_error)?;
 

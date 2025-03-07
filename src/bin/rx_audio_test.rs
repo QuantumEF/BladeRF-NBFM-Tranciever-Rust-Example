@@ -9,6 +9,7 @@ use bladerf_nbfm_transceiver::{
     conv::{ConvIter, ConvIterable},
     keep_1_in_n::Keep1InN,
     quadrature_demod::QuadratureDemod,
+    recieve::RecieveChain,
 };
 use hound::{WavSpec, WavWriter};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -159,9 +160,7 @@ fn main() -> anyhow::Result<()> {
     .unwrap();
     let progress = ProgressBar::no_length().with_style(bar_style);
 
-    let quad_demod = QuadratureDemod::new(Complex32::zero());
-    let decimator = Keep1InN::<DECIMATION>::new();
-    let mut filter = ConvIter::new(SHARP_TAPS, Complex32::zero());
+    let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS, 10.0);
 
     let mut audio = Vec::with_capacity(AUDIO_RATE * 30);
 
@@ -170,19 +169,7 @@ fn main() -> anyhow::Result<()> {
             .read(&mut buffer, Duration::from_secs(1))
             .with_context(|| "Cannot Read Samples")?;
 
-        // println!("audio len - init {}", audio.len());
-
-        audio.extend(
-            buffer
-                .into_iter()
-                .map(brf_ci16_to_cf32)
-                .map(|x| filter.filter_sample(x))
-                .map(|sample| quad_demod.process(sample))
-                .filter(|_| decimator.test_keep())
-                .map(|x| (x * i16::MAX as f32 * 10.0) as i16),
-        );
-
-        // println!("audio len - post {}", audio.len());
+        audio.extend(rx_chain.process_buffer(&buffer));
 
         if !args.noprogress {
             progress.inc(SAMPLES_PER_BLOCK as u64 * size_of::<ComplexI16>() as u64);

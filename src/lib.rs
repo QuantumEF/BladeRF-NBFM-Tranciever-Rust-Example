@@ -6,7 +6,9 @@ pub mod integer_interpolator;
 pub mod keep_1_in_n;
 pub mod quadrature_demod;
 pub mod quadrature_mod;
+pub mod recieve;
 pub mod transmit;
+pub mod zero_pad;
 
 #[allow(clippy::excessive_precision)]
 pub const MY_TAPS: [f32; 115] = [
