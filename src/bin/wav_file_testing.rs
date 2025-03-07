@@ -58,7 +58,8 @@ fn get_device(rate: u32, rf_gain: i32) -> BrfResult<BladeRf1> {
 #[derive(Debug, Parser)]
 struct Args {
     wave_file: PathBuf,
-    // output_file: PathBuf,
+    #[arg(long, short)]
+    output_file: PathBuf,
     kf: f32,
     rf_gain: i32,
 }
@@ -120,16 +121,20 @@ fn main() -> Result<()> {
         (INTERPOLATION_A * INTERPOLATION_B) as f32,
     );
 
-    let mut tx_process = transmit_chain.process(&audio_samples);
+    let mut tx_process = transmit_chain
+        .process(&audio_samples)
+        .map(|x| x * 0.7)
+        .map(brf_cf32_to_ci16);
 
     println!("Processing");
+
+    ////////////////////
 
     let device = get_device(SAMPLE_RATE as u32, args.rf_gain).map_err(my_brf_error)?;
 
     let sync_confg = SyncConfig::new(64, 8192, 8, Duration::from_secs(1)).map_err(my_brf_error)?;
 
     println!("{sync_confg:#?}");
-    // panic!();
 
     let streamer = device
         .tx_streamer::<ComplexI16>(sync_confg)
@@ -138,10 +143,11 @@ fn main() -> Result<()> {
     let mut iq_buf = [ComplexI16::ZERO; 8192];
 
     streamer.enable().map_err(my_brf_error)?;
+
     'outer: loop {
         for iq_sample in iq_buf.iter_mut() {
             if let Some(new_samp) = tx_process.next() {
-                *iq_sample = brf_cf32_to_ci16(new_samp);
+                *iq_sample = new_samp
             } else {
                 break 'outer;
             }
@@ -150,6 +156,7 @@ fn main() -> Result<()> {
             .write(&iq_buf, Duration::from_secs(1))
             .map_err(my_brf_error)?;
     }
+
     streamer.disable().map_err(my_brf_error)?;
 
     /////////
