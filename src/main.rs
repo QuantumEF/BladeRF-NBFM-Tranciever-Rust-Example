@@ -83,7 +83,7 @@ const SAMPLES_PER_BLOCK: usize = DECIMATION * AUDIO_BLOCK_SIZE;
 const BRF_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// The following params work well for the live recieve test (commit 2e27cd2739a60f1f0bf7ff2e1352f2834c063514)
-/// RUST_LOG=debug cargo run --release --bin bladerf-nbfm-transceiver -- -f 147555000 --rf-gain 40 --audio-output-gain 60
+/// RUST_LOG=debug cargo run --release --bin bladerf-nbfm-transceiver -- --rxf 147555000 --txf 147555000 --rf-tx-gain 69 --rf-rx-gain 50 --audio-output-gain 60
 #[derive(Parser)]
 struct Args {
     #[arg(long, long="rxf", value_parser = clap::value_parser!(u64).range(144_200_000..147_900_000))]
@@ -141,6 +141,19 @@ fn main() -> anyhow::Result<()> {
     // let bladerf: &'static BladeRf1 = Box::leak(bladerf);
 
     let bladerf_config = SyncConfig::default();
+
+    log::debug!(
+        "Extra sanity check, Rx Frequency set: {} Hz",
+        bladerf.get_frequency(Channel::Rx0).unwrap()
+    );
+    log::debug!(
+        "Extra sanity check, Tx Frequency set: {} Hz",
+        bladerf.get_frequency(Channel::Tx0).unwrap()
+    );
+
+    bladerf
+        .set_frequency(Channel::Rx0, args.rx_frequency)
+        .unwrap();
 
     log::debug!(
         "Extra sanity check, Rx Frequency set: {} Hz",
@@ -210,8 +223,8 @@ fn main() -> anyhow::Result<()> {
 
     let mut last_instant = Instant::now();
 
-    // rf_reciever.enable().unwrap();
-    rf_transmitter.enable().unwrap();
+    rf_reciever.enable().unwrap();
+    // rf_transmitter.enable().unwrap();
 
     assert_eq!(
         io_pb.writei(&[0.0; AUDIO_BLOCK_SIZE]).unwrap(),
@@ -232,42 +245,42 @@ fn main() -> anyhow::Result<()> {
 
     loop {
         {
-            // rf_reciever
-            //     .read(&mut iq_rx_buffer, BRF_TIMEOUT)
-            //     .with_context(|| "Cannot Read Samples")
-            //     .unwrap();
+            rf_reciever
+                .read(&mut iq_rx_buffer, BRF_TIMEOUT)
+                .with_context(|| "Cannot Read Samples")
+                .unwrap();
 
-            // let audio_iter = rx_chain
-            //     .process_buffer(&iq_rx_buffer)
-            //     .map(|x| x * args.audio_output_gain)
-            //     .zip(audio_playback_buffer.iter_mut());
+            let audio_iter = rx_chain
+                .process_buffer(&iq_rx_buffer)
+                .map(|x| x * args.audio_output_gain)
+                .zip(audio_playback_buffer.iter_mut());
 
-            // for (input_smap, output_samp) in audio_iter {
-            //     *output_samp = input_smap;
-            // }
+            for (input_smap, output_samp) in audio_iter {
+                *output_samp = input_smap;
+            }
 
-            // assert_eq!(
-            //     io_pb.writei(&audio_playback_buffer[..]).unwrap(),
-            //     AUDIO_BLOCK_SIZE
-            // );
+            assert_eq!(
+                io_pb.writei(&audio_playback_buffer[..]).unwrap(),
+                AUDIO_BLOCK_SIZE
+            );
         }
 
         {
-            assert_eq!(
-                io_cap.readi(&mut audio_capture_buffer).unwrap(),
-                AUDIO_BLOCK_SIZE
-            );
+            // assert_eq!(
+            //     io_cap.readi(&mut audio_capture_buffer).unwrap(),
+            //     AUDIO_BLOCK_SIZE
+            // );
 
-            let transmit_iter = transmit_chain
-                .process(&audio_capture_buffer)
-                .map(|x| x * 0.7)
-                .map(brf_cf32_to_ci16);
+            // let transmit_iter = transmit_chain
+            //     .process(&audio_capture_buffer)
+            //     .map(|x| x * 0.7)
+            //     .map(brf_cf32_to_ci16);
 
-            for (a, b) in iq_tx_buffer.iter_mut().zip(transmit_iter) {
-                *a = b;
-            }
+            // for (a, b) in iq_tx_buffer.iter_mut().zip(transmit_iter) {
+            //     *a = b;
+            // }
 
-            rf_transmitter.write(&iq_tx_buffer, BRF_TIMEOUT).unwrap();
+            // rf_transmitter.write(&iq_tx_buffer, BRF_TIMEOUT).unwrap();
         }
 
         match ctrlc_rx.try_recv() {
