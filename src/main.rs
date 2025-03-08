@@ -203,7 +203,7 @@ fn main() -> anyhow::Result<()> {
         );
     };
 
-    let transmitter_loop_call = || {
+    let mut transmitter_loop_call = || {
         assert_eq!(
             io_cap.readi(&mut audio_capture_buffer).unwrap(),
             AUDIO_BLOCK_SIZE
@@ -248,7 +248,7 @@ fn main() -> anyhow::Result<()> {
                 reciever_loop_call();
             }
             TrxState::Transmitting => {
-                // log::debug!("Doing Nothing")
+                transmitter_loop_call();
             }
         }
 
@@ -268,12 +268,13 @@ fn main() -> anyhow::Result<()> {
             match trx_state {
                 TrxState::Recieving => {
                     log::debug!("Setting up RX");
+
+                    // Stop TX related devices
                     rf_transmitter.disable().unwrap();
+                    pcm_output_dev.drop().unwrap();
+
+                    // Start up RX related devices
                     rf_reciever.enable().unwrap();
-
-                    // pcm_input_dev.hw_params(&hwp).unwrap();
-                    // io_pb = pcm_input_dev.io_f32().unwrap();
-
                     pcm_input_dev.prepare().unwrap();
 
                     assert_eq!(
@@ -297,7 +298,13 @@ fn main() -> anyhow::Result<()> {
                     log::debug!("Setting up TX");
                     rf_reciever.disable().unwrap();
                     pcm_input_dev.drop().unwrap();
-                    // rf_transmitter
+
+                    rf_transmitter.enable().unwrap();
+                    pcm_output_dev.prepare().unwrap();
+
+                    if pcm_output_dev.state() != State::Running {
+                        pcm_output_dev.start().unwrap()
+                    };
                 }
             }
         }
