@@ -7,29 +7,14 @@
     <button class="play-button" onclick="myTone()">Play Tone</button>
     <button onclick="myWs()">Ws</button>
 
+    <script></script>
     <script>
-      function myTone() {
+      async function myTone() {
         const audioCtx = new AudioContext();
-        const noiseDuration = 10;
 
-        const bufferSize = audioCtx.sampleRate * noiseDuration;
-        // Create an empty buffer
-        const noiseBuffer = new AudioBuffer({
-          length: bufferSize,
-          sampleRate: audioCtx.sampleRate,
-        });
-
-        const data = noiseBuffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-          data[i] = Math.random() * 2 - 1;
-        }
-
-        const noise = new AudioBufferSourceNode(audioCtx, {
-          buffer: noiseBuffer,
-        });
-
-        noise.connect(audioCtx.destination);
-        noise.start();
+        await audioCtx.audioWorklet.addModule("tone_thingy.js");
+        const randomNoiseNode = new AudioWorkletNode(audioCtx, "ws-processor");
+        randomNoiseNode.connect(audioCtx.destination);
       }
 
       function myWs() {
