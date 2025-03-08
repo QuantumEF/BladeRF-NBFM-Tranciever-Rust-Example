@@ -10,6 +10,7 @@ use bladerf_nbfm_transceiver::{
     keep_1_in_n::Keep1InN,
     quadrature_demod::QuadratureDemod,
     recieve::RecieveChain,
+    setup_bladerf,
 };
 use hound::{WavSpec, WavWriter};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -89,46 +90,19 @@ fn main() -> anyhow::Result<()> {
 
     log::debug!("Args: {:#?}", args);
 
-    let dev = if let Some(device) = args.device {
-        log::debug!("Opening device with device identifier: {}", device);
-        BladeRfAny::open_identifier(&device).with_context(|| "Cannot Open Device")?
-    } else {
-        log::debug!("Opening first device");
-        BladeRfAny::open_first().with_context(|| "Cannot Open Device")?
-    };
-
-    let dev: BladeRf1 = dev.try_into()?;
-
-    let xb200 = dev.get_xb200()?;
-    xb200.set_path(Direction::RX, Xb200Path::Mix)?;
-    xb200.set_filterbank(Direction::RX, Xb200Filter::MHz144)?;
-
     let channel = match args.channel {
         CliChannel::Ch0 => RxChannel::Rx0,
         CliChannel::Ch1 => RxChannel::Rx1,
     };
 
-    log::debug!("Configuring channel {:?}", channel);
-
-    dev.set_frequency(channel.into(), args.frequency)
-        .with_context(|| {
-            format!(
-                "Unable to set frequency ({}) on the given channel ({:?}).",
-                args.frequency, channel
-            )
-        })?;
-
-    log::debug!("Frequency set to {}", args.frequency);
-
-    dev.set_sample_rate(channel.into(), RF_RATE as u32)
-        .with_context(|| {
-            format!(
-                "Unable to set sample rate ({}) on the given channel ({:?}).",
-                RF_RATE as u32, channel
-            )
-        })?;
-
-    log::debug!("Sample rate set to {}", RF_RATE);
+    let dev = setup_bladerf(
+        RF_RATE as u32,
+        0,
+        args.frequency,
+        Direction::RX,
+        channel.into(),
+    )
+    .unwrap();
 
     let config = SyncConfig::new(16, 8192, 8, Duration::from_secs(3))
         .with_context(|| "Cannot Create Sync Config")?;
@@ -160,7 +134,7 @@ fn main() -> anyhow::Result<()> {
     .unwrap();
     let progress = ProgressBar::no_length().with_style(bar_style);
 
-    let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS, 10.0);
+    let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
 
     let mut audio = Vec::with_capacity(AUDIO_RATE * 30);
 
@@ -169,7 +143,7 @@ fn main() -> anyhow::Result<()> {
             .read(&mut buffer, Duration::from_secs(1))
             .with_context(|| "Cannot Read Samples")?;
 
-        audio.extend(rx_chain.process_buffer(&buffer));
+        audio.extend(rx_chain.process_buffer(&buffer).map(|x| x * 30.0));
 
         if !args.noprogress {
             progress.inc(SAMPLES_PER_BLOCK as u64 * size_of::<ComplexI16>() as u64);
@@ -212,8 +186,8 @@ fn main() -> anyhow::Result<()> {
         WavSpec {
             channels: 1,
             sample_rate: AUDIO_RATE as u32,
-            bits_per_sample: 16,
-            sample_format: hound::SampleFormat::Int,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
         },
     )?;
 

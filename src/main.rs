@@ -79,12 +79,14 @@ const SAMPLES_PER_BLOCK: usize = DECIMATION * 1024;
 
 const BRF_TIMEOUT: Duration = Duration::from_secs(1);
 
+/// The following params work well for the live recieve test (commit 2e27cd2739a60f1f0bf7ff2e1352f2834c063514)
+/// RUST_LOG=debug cargo run --release --bin bladerf-nbfm-transceiver -- -f 147555000 --rf-gain 40 --audio-output-gain 60
 #[derive(Parser)]
 struct Args {
     #[arg(long, short, value_parser = clap::value_parser!(u64).range(144_200_000..147_900_000))]
     frequency: u64,
 
-    #[arg(long, value_parser = clap::value_parser!(i32).range(20..70))]
+    #[arg(long, value_parser = clap::value_parser!(i32).range(0..70))]
     rf_gain: i32,
 
     #[arg(long, default_value = "1.0")]
