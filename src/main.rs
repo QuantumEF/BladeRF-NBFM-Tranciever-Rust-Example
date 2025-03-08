@@ -11,7 +11,9 @@ use bladerf::{
     BladeRF, BladeRf1, BladeRfAny, Channel, ComplexI16, Direction, RxSyncStream, SyncConfig,
     expansion_boards::{Xb200Filter, Xb200Path},
 };
-use bladerf_nbfm_transceiver::{SHARP_TAPS, recieve::RecieveChain, transmit::TransmitChain};
+use bladerf_nbfm_transceiver::{
+    SHARP_TAPS, recieve::RecieveChain, setup_bladerf, transmit::TransmitChain,
+};
 use clap::Parser;
 use cpal::{
     Device, Sample, SampleRate, Stream, StreamConfig,
@@ -21,45 +23,44 @@ use num::{Complex, complex::Complex32};
 
 use bladerf::Result as BrfResult;
 
-fn setup_bladerf(sample_rate: u32, rf_gain: i32, frequency: u64) -> BrfResult<BladeRf1> {
-    let device: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
-
-    device.set_sample_rate(Channel::Tx0, sample_rate)?;
-
-    device.set_gain(Channel::Tx0, rf_gain)?;
-
-    let xb200 = device.get_xb200()?;
-    xb200.set_path(Direction::TX, Xb200Path::Mix)?;
-    xb200.set_filterbank(Direction::TX, Xb200Filter::MHz144)?;
-
-    device.set_frequency(Channel::Tx0, frequency)?;
-    Ok(device)
-}
-
 fn run_audio_recieve(
-    // rf_rx: &RxSyncStream<&BladeRf1, ComplexI16, BladeRf1>,
+    rf_rx: RxSyncStream<&'static BladeRf1, ComplexI16, BladeRf1>,
     audio_device: Device,
     audio_stream_conf: &StreamConfig,
-    // audio_gain: f32,
-) -> anyhow::Result<(Stream, Sender<f32>)> {
-    let (audio_out_channel_send, audio_out_channel_recv) = mpsc::channel::<f32>();
+    audio_gain: f32,
+) -> anyhow::Result<Stream> {
+    // let (audio_out_channel_send, audio_out_channel_recv) = mpsc::channel::<f32>();
+
+    let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
+    let mut iq_buffer = vec![Complex::new(0_i16, 0); SAMPLES_PER_BLOCK];
+
+    rf_rx.enable()?;
 
     let streamer = audio_device.build_output_stream(
         audio_stream_conf,
         move |data: &mut [f32], _meta| {
-            for sample in data {
-                if let Ok(x) = audio_out_channel_recv.try_recv() {
-                    *sample = x;
-                } else {
-                    *sample = Sample::EQUILIBRIUM;
-                }
+            iq_buffer.clear();
+            iq_buffer.extend(repeat(ComplexI16::ZERO).take(data.len()));
+
+            rf_rx
+                .read(&mut iq_buffer, BRF_TIMEOUT)
+                .with_context(|| "Cannot Read Samples")
+                .unwrap();
+
+            let audio_iter = rx_chain
+                .process_buffer(&iq_buffer)
+                .map(|x| x * audio_gain)
+                .zip(data.iter_mut());
+
+            for (in_samp, out_samp) in audio_iter {
+                *out_samp = in_samp;
             }
         },
         move |err| println!("Ignoring Audio Error: {err}"),
         Some(Duration::from_millis(200)),
     )?;
 
-    Ok((streamer, audio_out_channel_send))
+    Ok(streamer)
 }
 
 const AUDIO_RATE: usize = 44100;
@@ -96,7 +97,16 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     pretty_env_logger::init();
 
-    let bladerf = setup_bladerf(SAMPLE_RATE as u32, args.rf_gain, args.frequency)?;
+    let bladerf = setup_bladerf(
+        SAMPLE_RATE as u32,
+        args.rf_gain,
+        args.frequency,
+        Direction::RX,
+        Channel::Rx0,
+    )?;
+
+    let bladerf = Box::new(bladerf);
+    let bladerf: &'static BladeRf1 = Box::leak(bladerf);
 
     let bladerf_config = SyncConfig::default();
 
@@ -112,7 +122,6 @@ fn main() -> anyhow::Result<()> {
         INTERPOLATION_B,
         FULL_INTERPOLATION as f32 * args.audio_input_gain,
     );
-    let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
 
     let host = cpal::default_host();
     let input_dev = host.default_input_device().expect("no input device found");
@@ -126,8 +135,13 @@ fn main() -> anyhow::Result<()> {
         buffer_size: cpal::BufferSize::Fixed(2048),
     };
 
-    let (audio_stream, audio_channel) =
-        run_audio_recieve(output_dev, &audio_stream_config).unwrap();
+    let audio_stream = run_audio_recieve(
+        rf_reciever,
+        output_dev,
+        &audio_stream_config,
+        args.audio_output_gain,
+    )
+    .unwrap();
 
     let (ctrlc_tx, ctrlc_rx) = std::sync::mpsc::channel();
     ctrlc::set_handler(move || {
@@ -135,32 +149,9 @@ fn main() -> anyhow::Result<()> {
     })
     .with_context(|| "Cannot Set Ctrl-C Handler")?;
 
-    rf_reciever.enable()?;
-    let mut iq_buffer = [Complex::new(0_i16, 0); SAMPLES_PER_BLOCK];
-
     let mut last_instant = Instant::now();
 
     loop {
-        rf_reciever
-            .read(&mut iq_buffer, BRF_TIMEOUT)
-            .with_context(|| "Cannot Read Samples")?;
-
-        // let mut audio_buffer = Vec::with_capacity(SAMPLES_PER_BLOCK / DECIMATION);
-
-        // audio_buffer.extend(
-        //     rx_chain
-        //         .process_buffer(&iq_buffer)
-        //         .map(|x| x * args.audio_output_gain),
-        // );
-
-        let audio_iter = rx_chain
-            .process_buffer(&iq_buffer)
-            .map(|x| x * args.audio_output_gain);
-
-        for sample in audio_iter {
-            audio_channel.send(sample).unwrap();
-        }
-
         match ctrlc_rx.try_recv() {
             std::result::Result::Ok(_) => break,
             Err(TryRecvError::Disconnected) => break,

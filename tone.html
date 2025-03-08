@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Arbitrary Waveform Buffer</title>
+  </head>
+  <body>
+    <button class="play-button" onclick="myTone()">Play Tone</button>
+    <button onclick="myWs()">Ws</button>
+
+    <script>
+      function myTone() {
+        const audioCtx = new AudioContext();
+        const noiseDuration = 10;
+
+        const bufferSize = audioCtx.sampleRate * noiseDuration;
+        // Create an empty buffer
+        const noiseBuffer = new AudioBuffer({
+          length: bufferSize,
+          sampleRate: audioCtx.sampleRate,
+        });
+
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = new AudioBufferSourceNode(audioCtx, {
+          buffer: noiseBuffer,
+        });
+
+        noise.connect(audioCtx.destination);
+        noise.start();
+      }
+
+      function myWs() {
+        const socket = new WebSocket("ws://localhost:1234");
+
+        socket.addEventListener("open", (event) => {
+          console.log("Connected to WebSocket server");
+          socket.send("Hello from client");
+        });
+
+        socket.addEventListener("message", (event) => {
+          console.log("Message from server:", event.data);
+        });
+
+        socket.addEventListener("close", (event) => {
+          console.log("Disconnected from WebSocket server");
+        });
+
+        socket.addEventListener("error", (event) => {
+          console.error("WebSocket error:", event);
+        });
+      }
+    </script>
+  </body>
+</html>

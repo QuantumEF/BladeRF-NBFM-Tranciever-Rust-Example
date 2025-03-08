@@ -1,7 +1,15 @@
 // #![feature(cell_update)]
 
+use std::time::Duration;
+
+use bladerf::{
+    BladeRF, BladeRf1, BladeRfAny, Channel, Direction, Result as BrfResult,
+    expansion_boards::{Xb200Filter, Xb200Path},
+};
+
 pub mod circ_buffer;
 pub mod conv;
+pub mod fsdr_rx_chain;
 pub mod integer_interpolator;
 pub mod keep_1_in_n;
 pub mod quadrature_demod;
@@ -9,6 +17,29 @@ pub mod quadrature_mod;
 pub mod recieve;
 pub mod transmit;
 pub mod zero_pad;
+
+pub const BRF_TIMEOUT: Duration = Duration::from_secs(1);
+
+pub fn setup_bladerf(
+    sample_rate: u32,
+    rf_gain: i32,
+    frequency: u64,
+    direction: Direction,
+    channel: Channel,
+) -> BrfResult<BladeRf1> {
+    let device: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
+
+    device.set_sample_rate(channel, sample_rate)?;
+
+    device.set_gain(channel, rf_gain)?;
+
+    let xb200 = device.get_xb200()?;
+    xb200.set_path(direction, Xb200Path::Mix)?;
+    xb200.set_filterbank(direction, Xb200Filter::MHz144)?;
+
+    device.set_frequency(channel, frequency)?;
+    Ok(device)
+}
 
 #[allow(clippy::excessive_precision)]
 pub const MY_TAPS: [f32; 115] = [
