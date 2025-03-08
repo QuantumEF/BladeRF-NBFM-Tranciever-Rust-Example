@@ -1,6 +1,7 @@
 use std::{
     iter::repeat,
     sync::mpsc::{self, Sender, TryRecvError},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -19,6 +20,7 @@ use bladerf_nbfm_transceiver::{
 };
 use clap::Parser;
 use crossterm::event::{Event, KeyCode, KeyEvent, poll as crossterm_poll, read as crossterm_read};
+use embedded_hal::digital::PinState;
 use num::{Complex, complex::Complex32};
 
 use bladerf::Result as BrfResult;
@@ -80,7 +82,7 @@ fn main() -> anyhow::Result<()> {
     )
     .with_context(|| "Unable to setup bladerf rx stuff.")?;
 
-    setup_bladerf(
+    let mut xb200 = setup_bladerf(
         &bladerf,
         SAMPLE_RATE as u32,
         args.rf_tx_gain,
@@ -91,6 +93,9 @@ fn main() -> anyhow::Result<()> {
     .with_context(|| "Unable to setup bladerf tx stuff.")?;
 
     log::debug!("Huh");
+
+    let gpio = xb200.take_periph().unwrap();
+    let trigger_pin = gpio.j13_1.into_output().unwrap();
 
     // let bladerf = Box::new(bladerf);
     // let bladerf: &'static BladeRf1 = Box::leak(bladerf);
@@ -273,6 +278,9 @@ fn main() -> anyhow::Result<()> {
                     rf_transmitter.disable().unwrap();
                     pcm_output_dev.drop().unwrap();
 
+                    trigger_pin.write(PinState::Low).unwrap();
+                    thread::sleep(Duration::from_millis(10));
+
                     // Start up RX related devices
                     rf_reciever.enable().unwrap();
                     pcm_input_dev.prepare().unwrap();
@@ -299,6 +307,11 @@ fn main() -> anyhow::Result<()> {
                     rf_reciever.disable().unwrap();
                     pcm_input_dev.drop().unwrap();
 
+                    // Set gpio
+                    trigger_pin.write(PinState::High).unwrap();
+                    thread::sleep(Duration::from_millis(10));
+
+                    // Startup hardware
                     rf_transmitter.enable().unwrap();
                     pcm_output_dev.prepare().unwrap();
 

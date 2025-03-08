@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use bladerf::{
     BladeRF, BladeRf1, BladeRfAny, Channel, Direction, Result as BrfResult,
-    expansion_boards::{Xb200Filter, Xb200Path},
+    expansion_boards::{Xb200, Xb200Filter, Xb200Path},
 };
 
 pub mod circ_buffer;
@@ -50,7 +50,7 @@ pub fn setup_bladerf(
     frequency: u64,
     direction: Direction,
     channel: Channel,
-) -> BrfResult<()> {
+) -> BrfResult<Xb200> {
     // let device: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
 
     log::debug!("Direction {:#?}, Channel {:#?}", direction, channel);
@@ -75,7 +75,7 @@ pub fn setup_bladerf(
     );
 
     // device.schedule_retune(channel, 0, frequency, None).unwrap();
-    Ok(())
+    Ok(xb200)
 }
 
 #[allow(clippy::excessive_precision)]
