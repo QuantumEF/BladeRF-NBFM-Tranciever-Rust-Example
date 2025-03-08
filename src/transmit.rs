@@ -12,6 +12,7 @@ pub struct TransmitChain<T: Copy, const N: usize> {
     modulator: QuadratureMod<T>,
     filter_a: ConvIter<T, T, N>,
     filter_b: ConvIter<T, T, N>,
+    filter_audio: ConvIter<T, T, N>,
     pad_a: Pad<T>,
     pad_b: Pad<T>,
     audio_gain: T,
@@ -23,6 +24,7 @@ impl<const N: usize> TransmitChain<f32, N> {
         sample_rate: f32,
         taps_a: [f32; N],
         taps_b: [f32; N],
+        taps_audio: [f32; N],
         interp_fac_a: usize,
         interp_fac_b: usize,
         audio_gain: f32,
@@ -31,6 +33,7 @@ impl<const N: usize> TransmitChain<f32, N> {
             modulator: QuadratureMod::with_kf(kf, 1.0 / sample_rate),
             filter_a: ConvIter::new(taps_a, 0.0),
             filter_b: ConvIter::new(taps_b, 0.0),
+            filter_audio: ConvIter::new(taps_audio, 0.0),
             pad_a: Pad::new(0.0, interp_fac_a - 1),
             pad_b: Pad::new(0.0, interp_fac_b - 1),
             audio_gain,
@@ -41,6 +44,8 @@ impl<const N: usize> TransmitChain<f32, N> {
         samples
             .iter()
             .copied()
+            // Audio Filter
+            .map(|x| self.filter_audio.filter_sample(x))
             // first interpolation and filter
             .flat_map(|x| self.pad_a.pad_sample(x))
             .map(|x| self.filter_a.filter_sample(x))

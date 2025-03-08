@@ -16,7 +16,8 @@ use bladerf::{
     expansion_boards::{Xb200Filter, Xb200Path},
 };
 use bladerf_nbfm_transceiver::{
-    SHARP_TAPS, TrxState, recieve::RecieveChain, setup_bladerf, transmit::TransmitChain,
+    AUDIO_2K5_SHARP, SHARP_TAPS, TrxState, recieve::RecieveChain, setup_bladerf,
+    transmit::TransmitChain,
 };
 use clap::Parser;
 use crossterm::event::{Event, KeyCode, KeyEvent, poll as crossterm_poll, read as crossterm_read};
@@ -164,6 +165,7 @@ fn main() -> anyhow::Result<()> {
         SAMPLE_RATE as f32,
         SHARP_TAPS,
         SHARP_TAPS,
+        AUDIO_2K5_SHARP,
         INTERPOLATION_A,
         INTERPOLATION_B,
         FULL_INTERPOLATION as f32 * args.audio_input_gain,
