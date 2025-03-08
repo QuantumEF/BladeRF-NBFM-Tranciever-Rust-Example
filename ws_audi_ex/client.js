@@ -12,6 +12,7 @@ let bufferSize = 4096,
 // Initialize WebSocket
 initWebSocket();
 
+
 //================= RECORDING =================
 function startRecording() {
     streamStreaming = true;

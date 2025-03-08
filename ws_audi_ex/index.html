@@ -3,10 +3,22 @@
   <head>
     <script src="jquery-3.7.1.js"></script>
     <script src="client.js"></script>
+    <script>
+      async function myTone() {
+        AudioContext = window.AudioContext || window.webkitAudioContext;
+
+        const audioCtx = new AudioContext();
+
+        await audioCtx.audioWorklet.addModule("tone_thingy.js");
+        const randomNoiseNode = new AudioWorkletNode(audioCtx, "ws-processor");
+        randomNoiseNode.connect(audioCtx.destination);
+      }
+    </script>
   </head>
 
   <body>
     <div class="message">Welcome!</div>
+    <button class="play-button" onclick="myTone()">Play Tone</button>
     <button onclick="startRecording()">Start recording</button>
     <button onclick="stopRecording()">Stop recording</button>
     <br />

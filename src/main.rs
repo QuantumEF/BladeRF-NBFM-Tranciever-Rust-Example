@@ -6,6 +6,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use alsa::{
+    Direction as AlsaDirection, PCM, ValueOr,
+    pcm::{Access, Format, HwParams, State},
+};
 use anyhow::Context;
 use bladerf::{
     BladeRF, BladeRf1, BladeRfAny, Channel, ComplexI16, Direction, RxSyncStream, SyncConfig,
@@ -15,53 +19,53 @@ use bladerf_nbfm_transceiver::{
     SHARP_TAPS, recieve::RecieveChain, setup_bladerf, transmit::TransmitChain,
 };
 use clap::Parser;
-use cpal::{
-    Device, Sample, SampleRate, Stream, StreamConfig,
-    traits::{DeviceTrait, HostTrait},
-};
+// use cpal::{
+//     Device, Sample, SampleRate, Stream, StreamConfig,
+//     traits::{DeviceTrait, HostTrait},
+// };
 use num::{Complex, complex::Complex32};
 
 use bladerf::Result as BrfResult;
 
-fn run_audio_recieve(
-    rf_rx: RxSyncStream<&'static BladeRf1, ComplexI16, BladeRf1>,
-    audio_device: Device,
-    audio_stream_conf: &StreamConfig,
-    audio_gain: f32,
-) -> anyhow::Result<Stream> {
-    // let (audio_out_channel_send, audio_out_channel_recv) = mpsc::channel::<f32>();
+// fn run_audio_recieve(
+//     rf_rx: RxSyncStream<&'static BladeRf1, ComplexI16, BladeRf1>,
+//     audio_device: Device,
+//     audio_stream_conf: &StreamConfig,
+//     audio_gain: f32,
+// ) -> anyhow::Result<Stream> {
+//     // let (audio_out_channel_send, audio_out_channel_recv) = mpsc::channel::<f32>();
 
-    let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
-    let mut iq_buffer = vec![Complex::new(0_i16, 0); SAMPLES_PER_BLOCK];
+//     let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
+//     let mut iq_buffer = vec![Complex::new(0_i16, 0); SAMPLES_PER_BLOCK];
 
-    rf_rx.enable()?;
+//     rf_rx.enable()?;
 
-    let streamer = audio_device.build_output_stream(
-        audio_stream_conf,
-        move |data: &mut [f32], _meta| {
-            iq_buffer.clear();
-            iq_buffer.extend(repeat(ComplexI16::ZERO).take(data.len()));
+//     let streamer = audio_device.build_output_stream(
+//         audio_stream_conf,
+//         move |data: &mut [f32], _meta| {
+//             iq_buffer.clear();
+//             iq_buffer.extend(repeat(ComplexI16::ZERO).take(data.len()));
 
-            rf_rx
-                .read(&mut iq_buffer, BRF_TIMEOUT)
-                .with_context(|| "Cannot Read Samples")
-                .unwrap();
+//             rf_rx
+//                 .read(&mut iq_buffer, BRF_TIMEOUT)
+//                 .with_context(|| "Cannot Read Samples")
+//                 .unwrap();
 
-            let audio_iter = rx_chain
-                .process_buffer(&iq_buffer)
-                .map(|x| x * audio_gain)
-                .zip(data.iter_mut());
+//             let audio_iter = rx_chain
+//                 .process_buffer(&iq_buffer)
+//                 .map(|x| x * audio_gain)
+//                 .zip(data.iter_mut());
 
-            for (in_samp, out_samp) in audio_iter {
-                *out_samp = in_samp;
-            }
-        },
-        move |err| println!("Ignoring Audio Error: {err}"),
-        Some(Duration::from_millis(200)),
-    )?;
+//             for (in_samp, out_samp) in audio_iter {
+//                 *out_samp = in_samp;
+//             }
+//         },
+//         move |err| println!("Ignoring Audio Error: {err}"),
+//         Some(Duration::from_millis(200)),
+//     )?;
 
-    Ok(streamer)
-}
+//     Ok(streamer)
+// }
 
 const AUDIO_RATE: usize = 44100;
 const INTERPOLATION_A: usize = 5;
@@ -71,7 +75,7 @@ const SAMPLE_RATE: usize = AUDIO_RATE * FULL_INTERPOLATION;
 const DECIMATION: usize = FULL_INTERPOLATION;
 
 /// Kindof arbitrarily chosen for now.
-const SAMPLES_PER_BLOCK: usize = AUDIO_RATE;
+const SAMPLES_PER_BLOCK: usize = DECIMATION * 1024;
 
 const BRF_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -96,6 +100,7 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     pretty_env_logger::init();
+    log::info!("WTH");
 
     let bladerf = setup_bladerf(
         SAMPLE_RATE as u32,
@@ -105,10 +110,17 @@ fn main() -> anyhow::Result<()> {
         Channel::Rx0,
     )?;
 
+    log::debug!("Huh");
+
     let bladerf = Box::new(bladerf);
     let bladerf: &'static BladeRf1 = Box::leak(bladerf);
 
     let bladerf_config = SyncConfig::default();
+
+    log::debug!(
+        "Frequency set: {}",
+        bladerf.get_frequency(Channel::Rx0).unwrap()
+    );
 
     let rf_reciever = bladerf.rx_streamer::<ComplexI16>(bladerf_config)?;
     let rf_transmitter = bladerf.tx_streamer::<ComplexI16>(bladerf_config)?;
@@ -123,26 +135,53 @@ fn main() -> anyhow::Result<()> {
         FULL_INTERPOLATION as f32 * args.audio_input_gain,
     );
 
-    let host = cpal::default_host();
-    let input_dev = host.default_input_device().expect("no input device found");
-    let output_dev = host
-        .default_output_device()
-        .expect("no output device found");
+    // let host = cpal::default_host();
+    // let input_dev = host.default_input_device().expect("no input device found");
+    // let output_dev = host
+    //     .default_output_device()
+    //     .expect("no output device found");
 
-    let audio_stream_config = StreamConfig {
-        channels: 1,
-        sample_rate: SampleRate(AUDIO_RATE as u32),
-        buffer_size: cpal::BufferSize::Fixed(2048),
-    };
+    // let audio_stream_config = StreamConfig {
+    //     channels: 1,
+    //     sample_rate: SampleRate(AUDIO_RATE as u32),
+    //     buffer_size: cpal::BufferSize::Fixed(2048),
+    // };
 
-    let audio_stream = run_audio_recieve(
-        rf_reciever,
-        output_dev,
-        &audio_stream_config,
-        args.audio_output_gain,
-    )
-    .unwrap();
+    // let audio_stream = run_audio_recieve(
+    //     rf_reciever,
+    //     output_dev,
+    //     &audio_stream_config,
+    //     args.audio_output_gain,
+    // )
+    // .unwrap();
 
+    //////////////////////// alsa
+    let pcm = PCM::new("default", AlsaDirection::Playback, false).unwrap();
+
+    // Set hardware parameters: 44100 Hz / Mono / 16 bit
+    let hwp = HwParams::any(&pcm).unwrap();
+    hwp.set_channels(1).unwrap();
+    hwp.set_rate(44100, ValueOr::Nearest).unwrap();
+    hwp.set_format(Format::float()).unwrap();
+    hwp.set_access(Access::RWInterleaved).unwrap();
+    pcm.hw_params(&hwp).unwrap();
+    let io = pcm.io_f32().unwrap();
+
+    // Make sure we don't start the stream too early
+    let hwp = pcm.hw_params_current().unwrap();
+    let swp = pcm.sw_params_current().unwrap();
+    swp.set_start_threshold(hwp.get_buffer_size().unwrap())
+        .unwrap();
+    pcm.sw_params(&swp).unwrap();
+
+    //////////////////////////////////
+
+    let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
+    let mut iq_buffer = [Complex::new(0_i16, 0); SAMPLES_PER_BLOCK];
+    let mut audio_buffer = [0.0; 1024];
+
+    ///////////////////////////////////
+    ///
     let (ctrlc_tx, ctrlc_rx) = std::sync::mpsc::channel();
     ctrlc::set_handler(move || {
         let _ = ctrlc_tx.send(());
@@ -151,16 +190,46 @@ fn main() -> anyhow::Result<()> {
 
     let mut last_instant = Instant::now();
 
+    rf_reciever.enable().unwrap();
+
+    assert_eq!(io.writei(&[0.0; 1024]).unwrap(), 1024);
+    assert_eq!(io.writei(&[0.0; 1024]).unwrap(), 1024);
+    assert_eq!(io.writei(&[0.0; 1024]).unwrap(), 1024);
+
+    if pcm.state() != State::Running {
+        pcm.start().unwrap()
+    };
+
     loop {
+        rf_reciever
+            .read(&mut iq_buffer, BRF_TIMEOUT)
+            .with_context(|| "Cannot Read Samples")
+            .unwrap();
+
+        let audio_iter = rx_chain
+            .process_buffer(&iq_buffer)
+            .map(|x| x * args.audio_output_gain)
+            .zip(audio_buffer.iter_mut());
+
+        for (input_smap, output_samp) in audio_iter {
+            *output_samp = input_smap;
+        }
+
+        assert_eq!(io.writei(&audio_buffer[..]).unwrap(), 1024);
+
+        // if pcm.state() != State::Running {
+        //     pcm.start().unwrap()
+        // };
+
         match ctrlc_rx.try_recv() {
             std::result::Result::Ok(_) => break,
             Err(TryRecvError::Disconnected) => break,
             _ => {}
         }
 
-        let now = Instant::now();
-        log::debug!("Elapsed {:#?}", now - last_instant);
-        last_instant = now
+        // let now = Instant::now();
+        // log::debug!("Elapsed {:#?}", now - last_instant);
+        // last_instant = now
     }
 
     Ok(())

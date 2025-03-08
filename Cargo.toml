@@ -29,5 +29,5 @@ crossterm = "0.28.1"
 alsa = "0.9.1"
 tinyaudio = "1.1.0"
 rodio = "0.20.1"
-futuresdr = { version = "0.0.37", features = ["audio"] }
+# futuresdr = { version = "0.0.37", features = ["audio"] }
 websocket = "0.27.1"

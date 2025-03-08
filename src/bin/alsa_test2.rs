@@ -1,3 +1,6 @@
+use std::thread;
+use std::time::Duration;
+
 use alsa::pcm::{Access, Format, HwParams, PCM, State};
 use alsa::{Direction, ValueOr};
 
@@ -27,15 +30,22 @@ fn main() {
         *a = (i as f32 * 2.0 * ::std::f32::consts::PI / 128.0).sin() * 0.7;
     }
 
+    if pcm.state() != State::Running {
+        pcm.start().unwrap()
+    };
+
     // Play it back for 2 seconds.
     for _ in 0..2 * 44100 / 1024 {
         assert_eq!(io.writei(&buf[..]).unwrap(), 1024);
     }
 
+    for _ in 0..20 * 44100 / 1024 {
+        assert_eq!(io.writei(&buf[..]).unwrap(), 1024);
+        thread::sleep(Duration::from_millis(10));
+    }
+
     // In case the buffer was larger than 2 seconds, start the stream manually.
-    if pcm.state() != State::Running {
-        pcm.start().unwrap()
-    };
+
     // Wait for the stream to finish playback.
     pcm.drain().unwrap();
 }

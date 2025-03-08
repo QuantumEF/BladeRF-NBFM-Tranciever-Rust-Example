@@ -9,7 +9,7 @@ use bladerf::{
 
 pub mod circ_buffer;
 pub mod conv;
-pub mod fsdr_rx_chain;
+// pub mod fsdr_rx_chain;
 pub mod integer_interpolator;
 pub mod keep_1_in_n;
 pub mod quadrature_demod;
@@ -29,15 +29,23 @@ pub fn setup_bladerf(
 ) -> BrfResult<BladeRf1> {
     let device: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
 
-    device.set_sample_rate(channel, sample_rate)?;
+    log::debug!("Direction {:#?}, Channel {:#?}", direction, channel);
 
+    let actual_rate = device.set_sample_rate(channel, sample_rate)?;
+    log::debug!("Actual Sample Rate: {actual_rate} / {sample_rate}");
+
+    log::debug!("Setting rf gain: {rf_gain}");
     device.set_gain(channel, rf_gain)?;
 
+    log::debug!("Configuring Xb200");
     let xb200 = device.get_xb200()?;
     xb200.set_path(direction, Xb200Path::Mix)?;
     xb200.set_filterbank(direction, Xb200Filter::MHz144)?;
 
+    log::debug!("Tuning to {frequency} Hz");
     device.set_frequency(channel, frequency)?;
+
+    // device.schedule_retune(channel, 0, frequency, None).unwrap();
     Ok(device)
 }
 
