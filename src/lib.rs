@@ -21,20 +21,21 @@ pub mod zero_pad;
 pub const BRF_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub fn setup_bladerf(
+    device: &BladeRf1,
     sample_rate: u32,
     rf_gain: i32,
     frequency: u64,
     direction: Direction,
     channel: Channel,
-) -> BrfResult<BladeRf1> {
-    let device: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
+) -> BrfResult<()> {
+    // let device: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
 
     log::debug!("Direction {:#?}, Channel {:#?}", direction, channel);
 
     let actual_rate = device.set_sample_rate(channel, sample_rate)?;
-    log::debug!("Actual Sample Rate: {actual_rate} / {sample_rate}");
+    log::debug!("Actual Sample Rate for {channel:#?}: {actual_rate} / {sample_rate}");
 
-    log::debug!("Setting rf gain: {rf_gain}");
+    log::debug!("Setting rf gain for {channel:#?}: {rf_gain}");
     device.set_gain(channel, rf_gain)?;
 
     log::debug!("Configuring Xb200");
@@ -42,11 +43,16 @@ pub fn setup_bladerf(
     xb200.set_path(direction, Xb200Path::Mix)?;
     xb200.set_filterbank(direction, Xb200Filter::MHz144)?;
 
-    log::debug!("Tuning to {frequency} Hz");
+    log::debug!("Tuning to {frequency} Hz for {channel:#?}");
     device.set_frequency(channel, frequency)?;
 
+    log::debug!(
+        "Frequency set: {} Hz for {channel:#?}",
+        device.get_frequency(channel).unwrap()
+    );
+
     // device.schedule_retune(channel, 0, frequency, None).unwrap();
-    Ok(device)
+    Ok(())
 }
 
 #[allow(clippy::excessive_precision)]
