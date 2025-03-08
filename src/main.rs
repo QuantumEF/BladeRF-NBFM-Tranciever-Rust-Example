@@ -1,5 +1,3 @@
-// Will chose an output sample rate of 44100 * 20 * 11
-
 use std::{
     iter::repeat,
     sync::mpsc::{self, Sender, TryRecvError},
@@ -17,56 +15,13 @@ use bladerf::{
     expansion_boards::{Xb200Filter, Xb200Path},
 };
 use bladerf_nbfm_transceiver::{
-    SHARP_TAPS, recieve::RecieveChain, setup_bladerf, transmit::TransmitChain,
+    SHARP_TAPS, TrxState, recieve::RecieveChain, setup_bladerf, transmit::TransmitChain,
 };
 use clap::Parser;
-// use cpal::{
-//     Device, Sample, SampleRate, Stream, StreamConfig,
-//     traits::{DeviceTrait, HostTrait},
-// };
+use crossterm::event::{Event, KeyCode, KeyEvent, poll as crossterm_poll, read as crossterm_read};
 use num::{Complex, complex::Complex32};
 
 use bladerf::Result as BrfResult;
-
-// fn run_audio_recieve(
-//     rf_rx: RxSyncStream<&'static BladeRf1, ComplexI16, BladeRf1>,
-//     audio_device: Device,
-//     audio_stream_conf: &StreamConfig,
-//     audio_gain: f32,
-// ) -> anyhow::Result<Stream> {
-//     // let (audio_out_channel_send, audio_out_channel_recv) = mpsc::channel::<f32>();
-
-//     let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
-//     let mut iq_buffer = vec![Complex::new(0_i16, 0); SAMPLES_PER_BLOCK];
-
-//     rf_rx.enable()?;
-
-//     let streamer = audio_device.build_output_stream(
-//         audio_stream_conf,
-//         move |data: &mut [f32], _meta| {
-//             iq_buffer.clear();
-//             iq_buffer.extend(repeat(ComplexI16::ZERO).take(data.len()));
-
-//             rf_rx
-//                 .read(&mut iq_buffer, BRF_TIMEOUT)
-//                 .with_context(|| "Cannot Read Samples")
-//                 .unwrap();
-
-//             let audio_iter = rx_chain
-//                 .process_buffer(&iq_buffer)
-//                 .map(|x| x * audio_gain)
-//                 .zip(data.iter_mut());
-
-//             for (in_samp, out_samp) in audio_iter {
-//                 *out_samp = in_samp;
-//             }
-//         },
-//         move |err| println!("Ignoring Audio Error: {err}"),
-//         Some(Duration::from_millis(200)),
-//     )?;
-
-//     Ok(streamer)
-// }
 
 const AUDIO_RATE: usize = 44100;
 const INTERPOLATION_A: usize = 5;
@@ -167,6 +122,8 @@ fn main() -> anyhow::Result<()> {
     let rf_reciever = bladerf.rx_streamer::<ComplexI16>(bladerf_config)?;
     let rf_transmitter = bladerf.tx_streamer::<ComplexI16>(bladerf_config)?;
 
+    let mut trx_state = TrxState::Recieving;
+
     //////////////////////// alsa
     let pcm_input_dev = PCM::new("default", AlsaDirection::Playback, false).unwrap();
     let pcm_output_dev = PCM::new("default", AlsaDirection::Capture, false).unwrap();
@@ -180,7 +137,7 @@ fn main() -> anyhow::Result<()> {
 
     pcm_input_dev.hw_params(&hwp).unwrap();
     pcm_output_dev.hw_params(&hwp).unwrap();
-    let io_pb = pcm_input_dev.io_f32().unwrap();
+    let mut io_pb = pcm_input_dev.io_f32().unwrap();
     let io_cap = pcm_output_dev.io_f32().unwrap();
 
     // return Ok(());
@@ -223,8 +180,50 @@ fn main() -> anyhow::Result<()> {
 
     let mut last_instant = Instant::now();
 
+    //////////////////////////////////
+
+    let mut reciever_loop_call = || {
+        rf_reciever
+            .read(&mut iq_rx_buffer, BRF_TIMEOUT)
+            .with_context(|| "Cannot Read Samples")
+            .unwrap();
+
+        let audio_iter = rx_chain
+            .process_buffer(&iq_rx_buffer)
+            .map(|x| x * args.audio_output_gain)
+            .zip(audio_playback_buffer.iter_mut());
+
+        for (input_smap, output_samp) in audio_iter {
+            *output_samp = input_smap;
+        }
+
+        assert_eq!(
+            io_pb.writei(&audio_playback_buffer[..]).unwrap(),
+            AUDIO_BLOCK_SIZE
+        );
+    };
+
+    let transmitter_loop_call = || {
+        assert_eq!(
+            io_cap.readi(&mut audio_capture_buffer).unwrap(),
+            AUDIO_BLOCK_SIZE
+        );
+
+        let transmit_iter = transmit_chain
+            .process(&audio_capture_buffer)
+            .map(|x| x * 0.7)
+            .map(brf_cf32_to_ci16);
+
+        for (a, b) in iq_tx_buffer.iter_mut().zip(transmit_iter) {
+            *a = b;
+        }
+
+        rf_transmitter.write(&iq_tx_buffer, BRF_TIMEOUT).unwrap();
+    };
+
+    //////////////////////////////////
+
     rf_reciever.enable().unwrap();
-    // rf_transmitter.enable().unwrap();
 
     assert_eq!(
         io_pb.writei(&[0.0; AUDIO_BLOCK_SIZE]).unwrap(),
@@ -244,49 +243,63 @@ fn main() -> anyhow::Result<()> {
     };
 
     loop {
-        {
-            rf_reciever
-                .read(&mut iq_rx_buffer, BRF_TIMEOUT)
-                .with_context(|| "Cannot Read Samples")
-                .unwrap();
-
-            let audio_iter = rx_chain
-                .process_buffer(&iq_rx_buffer)
-                .map(|x| x * args.audio_output_gain)
-                .zip(audio_playback_buffer.iter_mut());
-
-            for (input_smap, output_samp) in audio_iter {
-                *output_samp = input_smap;
+        match trx_state {
+            TrxState::Recieving => {
+                reciever_loop_call();
             }
-
-            assert_eq!(
-                io_pb.writei(&audio_playback_buffer[..]).unwrap(),
-                AUDIO_BLOCK_SIZE
-            );
-        }
-
-        {
-            // assert_eq!(
-            //     io_cap.readi(&mut audio_capture_buffer).unwrap(),
-            //     AUDIO_BLOCK_SIZE
-            // );
-
-            // let transmit_iter = transmit_chain
-            //     .process(&audio_capture_buffer)
-            //     .map(|x| x * 0.7)
-            //     .map(brf_cf32_to_ci16);
-
-            // for (a, b) in iq_tx_buffer.iter_mut().zip(transmit_iter) {
-            //     *a = b;
-            // }
-
-            // rf_transmitter.write(&iq_tx_buffer, BRF_TIMEOUT).unwrap();
+            TrxState::Transmitting => {
+                // log::debug!("Doing Nothing")
+            }
         }
 
         match ctrlc_rx.try_recv() {
             std::result::Result::Ok(_) => break,
             Err(TryRecvError::Disconnected) => break,
             _ => {}
+        }
+
+        if crossterm_poll(Duration::from_millis(0)).unwrap() {
+            // must read to clear poll
+            let _event = crossterm_read().unwrap();
+            // log::info!("Crossterm Event {:#?}", event);
+            trx_state.toggle();
+            log::info!("Now in state {:#?}", trx_state);
+
+            match trx_state {
+                TrxState::Recieving => {
+                    log::debug!("Setting up RX");
+                    rf_transmitter.disable().unwrap();
+                    rf_reciever.enable().unwrap();
+
+                    // pcm_input_dev.hw_params(&hwp).unwrap();
+                    // io_pb = pcm_input_dev.io_f32().unwrap();
+
+                    pcm_input_dev.prepare().unwrap();
+
+                    assert_eq!(
+                        io_pb.writei(&[0.0; AUDIO_BLOCK_SIZE]).unwrap(),
+                        AUDIO_BLOCK_SIZE
+                    );
+                    assert_eq!(
+                        io_pb.writei(&[0.0; AUDIO_BLOCK_SIZE]).unwrap(),
+                        AUDIO_BLOCK_SIZE
+                    );
+                    assert_eq!(
+                        io_pb.writei(&[0.0; AUDIO_BLOCK_SIZE]).unwrap(),
+                        AUDIO_BLOCK_SIZE
+                    );
+
+                    if pcm_input_dev.state() != State::Running {
+                        pcm_input_dev.start().unwrap()
+                    };
+                }
+                TrxState::Transmitting => {
+                    log::debug!("Setting up TX");
+                    rf_reciever.disable().unwrap();
+                    pcm_input_dev.drop().unwrap();
+                    // rf_transmitter
+                }
+            }
         }
 
         // let now = Instant::now();

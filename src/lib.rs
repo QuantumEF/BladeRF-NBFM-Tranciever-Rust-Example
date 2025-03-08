@@ -20,6 +20,29 @@ pub mod zero_pad;
 
 pub const BRF_TIMEOUT: Duration = Duration::from_secs(1);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrxState {
+    Transmitting,
+    Recieving,
+}
+
+impl TrxState {
+    pub fn is_tx(&self) -> bool {
+        matches!(self, TrxState::Transmitting)
+    }
+
+    pub fn is_rx(&self) -> bool {
+        matches!(self, TrxState::Recieving)
+    }
+
+    pub fn toggle(&mut self) {
+        *self = match self {
+            TrxState::Transmitting => TrxState::Recieving,
+            TrxState::Recieving => TrxState::Transmitting,
+        };
+    }
+}
+
 pub fn setup_bladerf(
     device: &BladeRf1,
     sample_rate: u32,
@@ -1176,7 +1199,7 @@ pub const AUDIO_TAPS: [f32; 231] = [
 mod tests {
     use dasp::{Frame, interpolate::Interpolator};
 
-    use crate::MY_TAPS;
+    use crate::{MY_TAPS, TrxState};
 
     #[test]
     fn scratch() {
@@ -1206,5 +1229,17 @@ mod tests {
     fn stepby_sanity_check() {
         let x: Vec<f32> = MY_TAPS.into_iter().step_by(4).collect();
         println!("{x:#?}")
+    }
+
+    #[test]
+    fn trx_state() {
+        let mut x = TrxState::Transmitting;
+        assert!(x.is_tx());
+
+        x.toggle();
+        assert!(x.is_rx());
+
+        x.toggle();
+        assert!(x.is_tx());
     }
 }
