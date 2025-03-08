@@ -45,6 +45,10 @@ impl<T: Copy + 'static, S: Copy + Mul<T, Output = S> + Add<S, Output = S> + 'sta
             .zip(self.buf.iter().copied())
             .fold(self.initial_value, |acc, (a, b)| (b * a) + acc)
     }
+
+    pub fn reset(&mut self) {
+        self.buf.fill(self.initial_value);
+    }
 }
 
 impl<

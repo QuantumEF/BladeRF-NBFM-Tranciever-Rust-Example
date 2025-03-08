@@ -52,4 +52,10 @@ impl<const N: usize> TransmitChain<f32, N> {
             // modulate
             .map(|x| self.modulator.step(x))
     }
+
+    pub fn reset(&mut self) {
+        self.modulator.reset();
+        self.filter_a.reset();
+        self.filter_b.reset();
+    }
 }
