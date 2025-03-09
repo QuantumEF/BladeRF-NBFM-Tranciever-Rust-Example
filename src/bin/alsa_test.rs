@@ -27,6 +27,9 @@ fn rms(buf: &[f32]) -> f64 {
         sum += (x as f64) * (x as f64);
     }
     let r = (sum / (buf.len() as f64)).sqrt();
+
+    let max = buf.iter().max_by(|a, b| a.total_cmp(b));
+    println!("Max: {max:#?}");
     // Convert value to decibels
     20.0 * (r).log10()
 }

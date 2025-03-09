@@ -64,6 +64,9 @@ struct Args {
 
     #[arg(long, default_value = "15700.0")]
     kf: f32,
+
+    #[arg(long, default_value = "0.0")]
+    ctcss: f32,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -169,6 +172,8 @@ fn main() -> anyhow::Result<()> {
         INTERPOLATION_A,
         INTERPOLATION_B,
         FULL_INTERPOLATION as f32 * args.audio_input_gain,
+        args.ctcss,
+        AUDIO_RATE as f32,
     );
 
     let mut iq_rx_buffer = [Complex::new(0_i16, 0); SAMPLES_PER_BLOCK];

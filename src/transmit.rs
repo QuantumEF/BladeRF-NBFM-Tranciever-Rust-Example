@@ -5,7 +5,7 @@ use num::{Complex, complex::Complex32, traits::ConstZero};
 
 use crate::{
     conv::ConvIter, integer_interpolator::IntegerInterpolator, quadrature_mod::QuadratureMod,
-    zero_pad::Pad,
+    sig_gen_iter::SimpleSigGen, zero_pad::Pad,
 };
 
 pub struct TransmitChain<T: Copy, const N: usize> {
@@ -15,6 +15,7 @@ pub struct TransmitChain<T: Copy, const N: usize> {
     filter_audio: ConvIter<T, T, N>,
     pad_a: Pad<T>,
     pad_b: Pad<T>,
+    ctsss: SimpleSigGen,
     audio_gain: T,
 }
 
@@ -28,6 +29,8 @@ impl<const N: usize> TransmitChain<f32, N> {
         interp_fac_a: usize,
         interp_fac_b: usize,
         audio_gain: f32,
+        ctcss_tone: f32,
+        audio_rate: f32,
     ) -> Self {
         Self {
             modulator: QuadratureMod::with_kf(kf, 1.0 / sample_rate),
@@ -36,6 +39,7 @@ impl<const N: usize> TransmitChain<f32, N> {
             filter_audio: ConvIter::new(taps_audio, 0.0),
             pad_a: Pad::new(0.0, interp_fac_a - 1),
             pad_b: Pad::new(0.0, interp_fac_b - 1),
+            ctsss: SimpleSigGen::new(ctcss_tone, audio_rate),
             audio_gain,
         }
     }
@@ -44,6 +48,8 @@ impl<const N: usize> TransmitChain<f32, N> {
         samples
             .iter()
             .copied()
+            // CTCSS
+            .map(|x| x + (self.ctsss.get_sample() * 0.2))
             // Audio Filter
             .map(|x| self.filter_audio.filter_sample(x))
             // first interpolation and filter
@@ -62,5 +68,7 @@ impl<const N: usize> TransmitChain<f32, N> {
         self.modulator.reset();
         self.filter_a.reset();
         self.filter_b.reset();
+        self.filter_audio.reset();
+        self.ctsss.reset();
     }
 }

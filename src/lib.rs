@@ -15,6 +15,7 @@ pub mod keep_1_in_n;
 pub mod quadrature_demod;
 pub mod quadrature_mod;
 pub mod recieve;
+pub mod sig_gen_iter;
 pub mod transmit;
 pub mod zero_pad;
 
