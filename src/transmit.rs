@@ -49,7 +49,7 @@ impl<const N: usize> TransmitChain<f32, N> {
             .iter()
             .copied()
             // CTCSS
-            .map(|x| x + (self.ctsss.get_sample() * 0.2))
+            .map(|x| x + (self.ctsss.get_sample() * 0.3))
             // Audio Filter
             .map(|x| self.filter_audio.filter_sample(x))
             // first interpolation and filter
