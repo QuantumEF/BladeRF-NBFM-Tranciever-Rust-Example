@@ -11,7 +11,7 @@ use alsa::{
 };
 use anyhow::Context;
 use bladerf::{
-    BladeRF, BladeRf1, BladeRfAny, Channel, ComplexI16, Direction, RxSyncStream, SyncConfig,
+    BladeRF, BladeRf1, BladeRfAny, Channel, ComplexI16, Direction, RxSyncStream, StreamConfig,
     brf_cf32_to_ci16,
     expansion_boards::{Xb200Filter, Xb200Path},
 };
@@ -104,7 +104,7 @@ fn main() -> anyhow::Result<()> {
     // let bladerf = Box::new(bladerf);
     // let bladerf: &'static BladeRf1 = Box::leak(bladerf);
 
-    let bladerf_config = SyncConfig::default();
+    let bladerf_config = StreamConfig::default();
 
     log::debug!(
         "Extra sanity check, Rx Frequency set: {} Hz",

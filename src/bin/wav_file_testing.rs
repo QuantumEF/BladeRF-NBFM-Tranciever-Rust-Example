@@ -10,7 +10,7 @@ use std::{
 };
 
 use bladerf::{
-    BladeRF, BladeRf1, BladeRfAny, Channel, ComplexI12, ComplexI16, Direction, SyncConfig,
+    BladeRF, BladeRf1, BladeRfAny, Channel, ComplexI12, ComplexI16, Direction, StreamConfig,
     brf_cf32_to_ci16, brf_ci12_to_cf32, brf_ci16_to_cf32,
     expansion_boards::{Xb200Filter, Xb200Path},
 };
@@ -19,7 +19,7 @@ use bladerf::Error as BrfError;
 use bladerf::Result as BrfResult;
 
 use bladerf_nbfm_transceiver::{
-    AUDIO_TAPS, MY_TAPS_44100_20, MY_TAPS_882000_11, SHARP_TAPS,
+    AUDIO_2K5_SHARP, AUDIO_TAPS, MY_TAPS_44100_20, MY_TAPS_882000_11, SHARP_TAPS,
     integer_interpolator::IntegerInterpolator, quadrature_demod::QuadratureDemod,
     quadrature_mod::QuadratureMod, transmit::TransmitChain,
 };
@@ -54,12 +54,20 @@ fn get_device(rate: u32, rf_gain: i32) -> BrfResult<BladeRf1> {
     Ok(device)
 }
 
+const AUDIO_RATE: usize = 44100;
+const INTERPOLATION_A: usize = 5;
+const INTERPOLATION_B: usize = 4;
+const FULL_INTERPOLATION: usize = INTERPOLATION_A * INTERPOLATION_B;
+const SAMPLE_RATE: usize = AUDIO_RATE * FULL_INTERPOLATION;
+const DECIMATION: usize = FULL_INTERPOLATION;
+
 /// The following works ok i guess; cargo run --release --bin wav_file_testing -- kn4vhm_test_mono_2.5k.wav 15700.0 70
 #[derive(Debug, Parser)]
 struct Args {
     wave_file: PathBuf,
     #[arg(long, short)]
     output_file: PathBuf,
+    #[arg(long, short, default_value = "15700.0")]
     kf: f32,
     rf_gain: i32,
 }
@@ -116,11 +124,13 @@ fn main() -> Result<()> {
         SAMPLE_RATE as f32,
         SHARP_TAPS,
         SHARP_TAPS,
+        AUDIO_2K5_SHARP,
         INTERPOLATION_A,
         INTERPOLATION_B,
-        (INTERPOLATION_A * INTERPOLATION_B) as f32,
+        FULL_INTERPOLATION as f32 * 1.0,
+        0.0,
+        AUDIO_RATE as f32,
     );
-
     let mut tx_process = transmit_chain
         .process(&audio_samples)
         .map(|x| x * 0.7)
@@ -130,54 +140,55 @@ fn main() -> Result<()> {
 
     ////////////////////
 
-    let device = get_device(SAMPLE_RATE as u32, args.rf_gain).map_err(my_brf_error)?;
+    // let device = get_device(SAMPLE_RATE as u32, args.rf_gain).map_err(my_brf_error)?;
 
-    let sync_confg = SyncConfig::new(64, 8192, 8, Duration::from_secs(1)).map_err(my_brf_error)?;
+    // let sync_confg =
+    //     StreamConfig::new(64, 8192, 8, Duration::from_secs(1)).map_err(my_brf_error)?;
 
-    println!("{sync_confg:#?}");
+    // println!("{sync_confg:#?}");
 
-    let streamer = device
-        .tx_streamer::<ComplexI16>(sync_confg)
-        .map_err(my_brf_error)?;
+    // let streamer = device
+    //     .tx_streamer::<ComplexI16>(sync_confg)
+    //     .map_err(my_brf_error)?;
 
-    let mut iq_buf = [ComplexI16::ZERO; 8192];
+    // let mut iq_buf = [ComplexI16::ZERO; 8192];
 
-    streamer.enable().map_err(my_brf_error)?;
+    // streamer.enable().map_err(my_brf_error)?;
 
-    'outer: loop {
-        for iq_sample in iq_buf.iter_mut() {
-            if let Some(new_samp) = tx_process.next() {
-                *iq_sample = new_samp
-            } else {
-                break 'outer;
-            }
-        }
-        streamer
-            .write(&iq_buf, Duration::from_secs(1))
-            .map_err(my_brf_error)?;
-    }
+    // 'outer: loop {
+    //     for iq_sample in iq_buf.iter_mut() {
+    //         if let Some(new_samp) = tx_process.next() {
+    //             *iq_sample = new_samp
+    //         } else {
+    //             break 'outer;
+    //         }
+    //     }
+    //     streamer
+    //         .write(&iq_buf, Duration::from_secs(1))
+    //         .map_err(my_brf_error)?;
+    // }
 
-    streamer.disable().map_err(my_brf_error)?;
+    // streamer.disable().map_err(my_brf_error)?;
 
     /////////
 
-    // let mut output_file = File::create(args.output_file)?;
-    // let mut output_buffer = BufWriter::new(&mut output_file);
+    let mut output_file = File::create(args.output_file)?;
+    let mut output_buffer = BufWriter::new(&mut output_file);
 
-    // for iq_sample in tx_process {
-    //     // let sample_bytes: [u8; 8] = unsafe { transmute(iq_sample) };
-    //     // output_buffer.write_all(&sample_bytes)?;
+    for iq_sample in tx_process {
+        // let sample_bytes: [u8; 8] = unsafe { transmute(iq_sample) };
+        // output_buffer.write_all(&sample_bytes)?;
 
-    //     let quantized_samp = brf_cf32_to_ci16(iq_sample);
-    //     let new_samp = brf_ci16_to_cf32(quantized_samp);
-    //     let sample_bytes: [u8; 8] = unsafe { transmute(new_samp) };
-    //     output_buffer.write_all(&sample_bytes)?;
-    // }
-    // println!("Finishing");
+        // let quantized_samp = brf_cf32_to_ci16(iq_sample);
+        let new_samp = brf_ci16_to_cf32(iq_sample);
+        let sample_bytes: [u8; 8] = unsafe { transmute(new_samp) };
+        output_buffer.write_all(&sample_bytes)?;
+    }
+    println!("Finishing");
 
-    // output_buffer.flush()?;
-    // let _ = output_buffer.into_inner();
-    // output_file.flush()?;
+    output_buffer.flush()?;
+    let _ = output_buffer.into_inner();
+    output_file.flush()?;
 
     Ok(())
 }
