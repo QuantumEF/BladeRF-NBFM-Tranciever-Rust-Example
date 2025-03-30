@@ -1,1 +1,1 @@
-RUST_LOG=debug cargo run --release --bin bladerf-nbfm-transceiver -- --rxf 147555000 --txf 147555000 --rf-tx-gain 60 --rf-rx-gain 50 --audio-output-gain 60
+RUST_LOG=debug cargo run --release --bin bladerf-nbfm-transceiver -- --rxf 147555000 --txf 147555000 --rf-tx-gain 50 --rf-rx-gain 50 --audio-output-gain 60

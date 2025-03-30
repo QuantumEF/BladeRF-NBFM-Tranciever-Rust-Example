@@ -50,10 +50,10 @@ struct Args {
     #[arg(long, long="txf", value_parser = clap::value_parser!(u64).range(144_200_000..147_900_000))]
     tx_frequency: u64,
 
-    #[arg(long, value_parser = clap::value_parser!(i32).range(0..70))]
+    #[arg(long, value_parser = clap::value_parser!(i32).range(0..=60))]
     rf_rx_gain: i32,
 
-    #[arg(long, value_parser = clap::value_parser!(i32).range(13..70))]
+    #[arg(long, value_parser = clap::value_parser!(i32).range(17..=73))]
     rf_tx_gain: i32,
 
     #[arg(long, default_value = "1.0")]
@@ -223,7 +223,7 @@ fn main() -> anyhow::Result<()> {
 
         let transmit_iter = transmit_chain
             .process(&audio_capture_buffer)
-            .map(|x| x * 0.7)
+            .map(|x| x * 0.9)
             .map(brf_cf32_to_ci16);
 
         for (a, b) in iq_tx_buffer.iter_mut().zip(transmit_iter) {
@@ -286,7 +286,7 @@ fn main() -> anyhow::Result<()> {
                     pcm_output_dev.drop().unwrap();
 
                     trigger_pin.write(PinState::Low).unwrap();
-                    thread::sleep(Duration::from_millis(10));
+                    thread::sleep(Duration::from_millis(20));
 
                     // Start up RX related devices
                     rf_reciever.enable().unwrap();
@@ -316,7 +316,7 @@ fn main() -> anyhow::Result<()> {
 
                     // Set gpio
                     trigger_pin.write(PinState::High).unwrap();
-                    thread::sleep(Duration::from_millis(10));
+                    thread::sleep(Duration::from_millis(20));
 
                     // Startup hardware
                     rf_transmitter.enable().unwrap();
