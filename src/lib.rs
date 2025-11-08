@@ -1,11 +1,12 @@
 // #![feature(cell_update)]
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use bladerf::{
-    BladeRF, BladeRf1, BladeRfAny, Channel, Direction, Result as BrfResult,
-    expansion_boards::{Xb200, Xb200Filter, Xb200Path},
-};
+use seify::{self, Device, DeviceTrait};
+// use bladerf::{
+//     BladeRF, BladeRf1, BladeRfAny, Channel, Direction, Result as BrfResult,
+//     expansion_boards::{Xb200, Xb200Filter, Xb200Path},
+// };
 
 pub mod circ_buffer;
 pub mod conv;
@@ -44,40 +45,44 @@ impl TrxState {
     }
 }
 
-pub fn setup_bladerf(
-    device: &BladeRf1,
-    sample_rate: u32,
-    rf_gain: i32,
-    frequency: u64,
-    direction: Direction,
-    channel: Channel,
-) -> BrfResult<Xb200> {
-    // let device: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
+// pub fn setup_dev(device: &Device<Arc<dyn DeviceTrait>>, sample_rate: u32, ) -> anyhow::Result<()> {}
 
-    log::debug!("Direction {:#?}, Channel {:#?}", direction, channel);
+// pub fn setup_bladerf(
+//     device: &BladeRf1,
+//     sample_rate: u32,
+//     rf_gain: i32,
+//     frequency: u64,
+//     direction: Direction,
+//     channel: Channel,
+// ) -> BrfResult<Xb200> {
+//     // let device: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
 
-    let actual_rate = device.set_sample_rate(channel, sample_rate)?;
-    log::debug!("Actual Sample Rate for {channel:#?}: {actual_rate} / {sample_rate}");
+//     log::debug!("Direction {:#?}, Channel {:#?}", direction, channel);
 
-    log::debug!("Setting rf gain for {channel:#?}: {rf_gain}");
-    device.set_gain(channel, rf_gain)?;
+//     let actual_rate = device.set_sample_rate(channel, sample_rate)?;
+//     log::debug!("Actual Sample Rate for {channel:#?}: {actual_rate} / {sample_rate}");
 
-    log::debug!("Configuring Xb200");
-    let xb200 = device.get_xb200()?;
-    xb200.set_path(direction, Xb200Path::Mix)?;
-    xb200.set_filterbank(direction, Xb200Filter::MHz144)?;
+//     log::debug!("Setting rf gain for {channel:#?}: {rf_gain}");
+//     device.set_gain(channel, rf_gain)?;
 
-    log::debug!("Tuning to {frequency} Hz for {channel:#?}");
-    device.set_frequency(channel, frequency)?;
+//     log::debug!("Configuring Xb200");
+//     let xb200 = device.get_xb200()?;
+//     xb200.set_path(direction, Xb200Path::Mix)?;
+//     xb200.set_filterbank(direction, Xb200Filter::MHz144)?;
 
-    log::debug!(
-        "Frequency set: {} Hz for {channel:#?}",
-        device.get_frequency(channel).unwrap()
-    );
+//     log::debug!("Tuning to {frequency} Hz for {channel:#?}");
+//     device.set_frequency(channel, frequency)?;
 
-    // device.schedule_retune(channel, 0, frequency, None).unwrap();
-    Ok(xb200)
-}
+//     log::debug!(
+//         "Frequency set: {} Hz for {channel:#?}",
+//         device.get_frequency(channel).unwrap()
+//     );
+
+//     // device.schedule_retune(channel, 0, frequency, None).unwrap();
+//     Ok(xb200)
+// }
+
+// pub fn setup_xb(xb200: &Xb200) -> BrfResult<()> {}
 
 #[allow(clippy::excessive_precision)]
 pub const AUDIO_2K5_SHARP: [f32; 461] = [

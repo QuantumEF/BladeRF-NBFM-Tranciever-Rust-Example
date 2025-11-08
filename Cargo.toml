@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+seify = { git = "https://github.com/ratzrattillo/seify", branch = "bladerf1", default-features = false, features = [
+    "bladerf",
+] }
 circular-buffer = "1.0.0"
 clap = { version = "4.5.31", features = ["derive"] }
 dasp = { version = "0.11.0", features = [
@@ -16,7 +19,7 @@ itertools = "0.14.0"
 num = "0.4.3"
 plotly = "0.12.1"
 symphonia = "0.5.4"
-bladerf = { path = "../seify-bladerf" }
+# bladerf = { path = "../seify-bladerf" }
 ndarray = "0.16.1"
 ndarray-conv = "0.4.1"
 log = "0.4.26"

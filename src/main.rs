@@ -5,26 +5,27 @@ use std::{
     time::{Duration, Instant},
 };
 
+use seify::{self, Args, Device, DeviceTrait, RxStreamer};
+
 use alsa::{
     Direction as AlsaDirection, PCM, ValueOr,
     pcm::{Access, Format, HwParams, State},
 };
 use anyhow::Context;
-use bladerf::{
-    BladeRF, BladeRf1, BladeRfAny, Channel, ComplexI16, Direction, RxSyncStream, StreamConfig,
-    brf_cf32_to_ci16,
-    expansion_boards::{Xb200Filter, Xb200Path},
-};
+// use bladerf::{
+//     BladeRF, BladeRf1, BladeRfAny, Channel, ComplexI16, Direction, RxSyncStream, StreamConfig,
+//     brf_cf32_to_ci16,
+//     expansion_boards::{Xb200Filter, Xb200Path},
+// };
 use bladerf_nbfm_transceiver::{
-    AUDIO_2K5_SHARP, SHARP_TAPS, TrxState, recieve::RecieveChain, setup_bladerf,
-    transmit::TransmitChain,
+    AUDIO_2K5_SHARP, SHARP_TAPS, TrxState, recieve::RecieveChain, transmit::TransmitChain,
 };
 use clap::Parser;
 use crossterm::event::{Event, KeyCode, KeyEvent, poll as crossterm_poll, read as crossterm_read};
 use embedded_hal::digital::PinState;
 use num::{Complex, complex::Complex32};
 
-use bladerf::Result as BrfResult;
+// use bladerf::Result as BrfResult;
 
 const AUDIO_RATE: usize = 44100;
 const INTERPOLATION_A: usize = 5;
@@ -43,7 +44,7 @@ const BRF_TIMEOUT: Duration = Duration::from_secs(1);
 /// The following params work well for the live recieve test (commit 2e27cd2739a60f1f0bf7ff2e1352f2834c063514)
 /// RUST_LOG=debug cargo run --release --bin bladerf-nbfm-transceiver -- --rxf 147555000 --txf 147555000 --rf-tx-gain 69 --rf-rx-gain 50 --audio-output-gain 60
 #[derive(Parser)]
-struct Args {
+struct CliArgs {
     #[arg(long, long="rxf", value_parser = clap::value_parser!(u64).range(144_200_000..147_900_000))]
     rx_frequency: u64,
 
@@ -70,66 +71,85 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+    let cli_args = CliArgs::parse();
     pretty_env_logger::init();
     log::info!("WTH");
 
-    let bladerf: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
+    let dev = seify::impls::BladeRf::open("")?;
 
-    setup_bladerf(
-        &bladerf,
-        SAMPLE_RATE as u32,
-        args.rf_rx_gain,
-        args.rx_frequency,
-        Direction::RX,
-        Channel::Rx0,
-    )
-    .with_context(|| "Unable to setup bladerf rx stuff.")?;
+    // let bladerf = Device::new()?;
 
-    let mut xb200 = setup_bladerf(
-        &bladerf,
-        SAMPLE_RATE as u32,
-        args.rf_tx_gain,
-        args.tx_frequency,
-        Direction::TX,
-        Channel::Tx0,
-    )
-    .with_context(|| "Unable to setup bladerf tx stuff.")?;
+    dev.set_sample_rate(seify::Direction::Rx, 0, SAMPLE_RATE as f64)?;
+    dev.set_sample_rate(seify::Direction::Tx, 0, SAMPLE_RATE as f64)?;
+
+    dev.set_gain(seify::Direction::Rx, 0, cli_args.rf_rx_gain as f64)?;
+    dev.set_gain(seify::Direction::Tx, 0, cli_args.rf_tx_gain as f64)?;
+
+    dev.set_frequency(
+        seify::Direction::Rx,
+        0,
+        cli_args.rx_frequency as f64,
+        Args::new(),
+    )?;
+
+    // let bladerf: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
+
+    // setup_bladerf(
+    //     &bladerf,
+    //     SAMPLE_RATE as u32,
+    //     args.rf_rx_gain,
+    //     args.rx_frequency,
+    //     Direction::RX,
+    //     Channel::Rx0,
+    // )
+    // .with_context(|| "Unable to setup bladerf rx stuff.")?;
+
+    // let mut xb200 = setup_bladerf(
+    //     &bladerf,
+    //     SAMPLE_RATE as u32,
+    //     args.rf_tx_gain,
+    //     args.tx_frequency,
+    //     Direction::TX,
+    //     Channel::Tx0,
+    // )
+    // .with_context(|| "Unable to setup bladerf tx stuff.")?;
 
     log::debug!("Huh");
 
-    let gpio = xb200.take_periph().unwrap();
-    let trigger_pin = gpio.j13_1.into_output().unwrap();
+    // let gpio = xb200.take_periph().unwrap();
+    // let trigger_pin = gpio.j13_1.into_output().unwrap();
 
     // let bladerf = Box::new(bladerf);
     // let bladerf: &'static BladeRf1 = Box::leak(bladerf);
 
-    let bladerf_config = StreamConfig::default();
+    // let bladerf_config = StreamConfig::default();
 
-    log::debug!(
-        "Extra sanity check, Rx Frequency set: {} Hz",
-        bladerf.get_frequency(Channel::Rx0).unwrap()
-    );
-    log::debug!(
-        "Extra sanity check, Tx Frequency set: {} Hz",
-        bladerf.get_frequency(Channel::Tx0).unwrap()
-    );
+    // log::debug!(
+    //     "Extra sanity check, Rx Frequency set: {} Hz",
+    //     bladerf.get_frequency(Channel::Rx0).unwrap()
+    // );
+    // log::debug!(
+    //     "Extra sanity check, Tx Frequency set: {} Hz",
+    //     bladerf.get_frequency(Channel::Tx0).unwrap()
+    // );
 
-    bladerf
-        .set_frequency(Channel::Rx0, args.rx_frequency)
-        .unwrap();
+    // bladerf
+    //     .set_frequency(Channel::Rx0, args.rx_frequency)
+    //     .unwrap();
 
-    log::debug!(
-        "Extra sanity check, Rx Frequency set: {} Hz",
-        bladerf.get_frequency(Channel::Rx0).unwrap()
-    );
-    log::debug!(
-        "Extra sanity check, Tx Frequency set: {} Hz",
-        bladerf.get_frequency(Channel::Tx0).unwrap()
-    );
+    // log::debug!(
+    //     "Extra sanity check, Rx Frequency set: {} Hz",
+    //     bladerf.get_frequency(Channel::Rx0).unwrap()
+    // );
+    // log::debug!(
+    //     "Extra sanity check, Tx Frequency set: {} Hz",
+    //     bladerf.get_frequency(Channel::Tx0).unwrap()
+    // );
 
-    let rf_reciever = bladerf.rx_streamer::<ComplexI16>(bladerf_config)?;
-    let rf_transmitter = bladerf.tx_streamer::<ComplexI16>(bladerf_config)?;
+    // let rf_reciever = bladerf.rx_streamer::<ComplexI16>(bladerf_config)?;
+    let mut rf_reciever = dev.rx_streamer(&[0], Args::new())?;
+    let rf_transmitter = dev.tx_streamer(&[0], Args::new())?;
+    // let rf_transmitter = bladerf.tx_streamer::<ComplexI16>(bladerf_config)?;
 
     let mut trx_state = TrxState::Recieving;
 
@@ -164,22 +184,22 @@ fn main() -> anyhow::Result<()> {
 
     let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
     let mut transmit_chain = TransmitChain::new(
-        args.kf,
+        cli_args.kf,
         SAMPLE_RATE as f32,
         SHARP_TAPS,
         SHARP_TAPS,
         AUDIO_2K5_SHARP,
         INTERPOLATION_A,
         INTERPOLATION_B,
-        FULL_INTERPOLATION as f32 * args.audio_input_gain,
-        args.ctcss,
+        FULL_INTERPOLATION as f32 * cli_args.audio_input_gain,
+        cli_args.ctcss,
         AUDIO_RATE as f32,
     );
 
-    let mut iq_rx_buffer = [Complex::new(0_i16, 0); SAMPLES_PER_BLOCK];
+    let mut iq_rx_buffer = [Complex::new(0.0, 0.0); SAMPLES_PER_BLOCK];
     let mut audio_playback_buffer = [0.0; AUDIO_BLOCK_SIZE];
 
-    let mut iq_tx_buffer = [Complex::new(0_i16, 0); SAMPLES_PER_BLOCK];
+    let mut iq_tx_buffer = [Complex::new(0.0, 0.0); SAMPLES_PER_BLOCK];
     let mut audio_capture_buffer = [0.0; AUDIO_BLOCK_SIZE];
 
     ///////////////////////////////////
@@ -196,13 +216,13 @@ fn main() -> anyhow::Result<()> {
 
     let mut reciever_loop_call = || {
         rf_reciever
-            .read(&mut iq_rx_buffer, BRF_TIMEOUT)
+            .read(&mut [&mut iq_rx_buffer], BRF_TIMEOUT.as_micros() as i64)
             .with_context(|| "Cannot Read Samples")
             .unwrap();
 
         let audio_iter = rx_chain
             .process_buffer(&iq_rx_buffer)
-            .map(|x| x * args.audio_output_gain)
+            .map(|x| x * cli_args.audio_output_gain)
             .zip(audio_playback_buffer.iter_mut());
 
         for (input_smap, output_samp) in audio_iter {
@@ -223,19 +243,18 @@ fn main() -> anyhow::Result<()> {
 
         let transmit_iter = transmit_chain
             .process(&audio_capture_buffer)
-            .map(|x| x * 0.9)
-            .map(brf_cf32_to_ci16);
+            .map(|x| x * 0.9);
 
         for (a, b) in iq_tx_buffer.iter_mut().zip(transmit_iter) {
             *a = b;
         }
 
-        rf_transmitter.write(&iq_tx_buffer, BRF_TIMEOUT).unwrap();
+        // rf_transmitter.write(&iq_tx_buffer, BRF_TIMEOUT).unwrap();
     };
 
     //////////////////////////////////
 
-    rf_reciever.enable().unwrap();
+    // rf_reciever.enable().unwrap();
 
     assert_eq!(
         io_pb.writei(&[0.0; AUDIO_BLOCK_SIZE]).unwrap(),
@@ -282,14 +301,14 @@ fn main() -> anyhow::Result<()> {
                     log::debug!("Setting up RX");
 
                     // Stop TX related devices
-                    rf_transmitter.disable().unwrap();
+                    // rf_transmitter.disable().unwrap();
                     pcm_output_dev.drop().unwrap();
 
-                    trigger_pin.write(PinState::Low).unwrap();
-                    thread::sleep(Duration::from_millis(20));
+                    // trigger_pin.write(PinState::Low).unwrap();
+                    // thread::sleep(Duration::from_millis(20));
 
                     // Start up RX related devices
-                    rf_reciever.enable().unwrap();
+                    // rf_reciever.enable().unwrap();
                     pcm_input_dev.prepare().unwrap();
 
                     assert_eq!(
@@ -311,15 +330,15 @@ fn main() -> anyhow::Result<()> {
                 }
                 TrxState::Transmitting => {
                     log::debug!("Setting up TX");
-                    rf_reciever.disable().unwrap();
+                    // rf_reciever.disable().unwrap();
                     pcm_input_dev.drop().unwrap();
 
                     // Set gpio
-                    trigger_pin.write(PinState::High).unwrap();
-                    thread::sleep(Duration::from_millis(20));
+                    // trigger_pin.write(PinState::High).unwrap();
+                    // thread::sleep(Duration::from_millis(20));
 
                     // Startup hardware
-                    rf_transmitter.enable().unwrap();
+                    // rf_transmitter.enable().unwrap();
                     pcm_output_dev.prepare().unwrap();
 
                     if pcm_output_dev.state() != State::Running {
