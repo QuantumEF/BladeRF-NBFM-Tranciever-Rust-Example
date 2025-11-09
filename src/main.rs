@@ -1,11 +1,14 @@
 use std::{
     iter::repeat,
-    sync::mpsc::{self, Sender, TryRecvError},
+    sync::{
+        Mutex,
+        mpsc::{self, Sender, TryRecvError},
+    },
     thread,
     time::{Duration, Instant},
 };
 
-use seify::{self, Args, Device, DeviceTrait, RxStreamer};
+use seify::{self, Args, Device, DeviceTrait, RxStreamer, TxStreamer};
 
 use alsa::{
     Direction as AlsaDirection, PCM, ValueOr,
@@ -45,10 +48,10 @@ const BRF_TIMEOUT: Duration = Duration::from_secs(1);
 /// RUST_LOG=debug cargo run --release --bin bladerf-nbfm-transceiver -- --rxf 147555000 --txf 147555000 --rf-tx-gain 69 --rf-rx-gain 50 --audio-output-gain 60
 #[derive(Parser)]
 struct CliArgs {
-    #[arg(long, long="rxf", value_parser = clap::value_parser!(u64).range(144_200_000..147_900_000))]
+    #[arg(long, long="rxf", value_parser = clap::value_parser!(u64).range(144_200_000..447_900_000))]
     rx_frequency: u64,
 
-    #[arg(long, long="txf", value_parser = clap::value_parser!(u64).range(144_200_000..147_900_000))]
+    #[arg(long, long="txf", value_parser = clap::value_parser!(u64).range(144_200_000..447_900_000))]
     tx_frequency: u64,
 
     #[arg(long, value_parser = clap::value_parser!(i32).range(0..=60))]
@@ -92,64 +95,20 @@ fn main() -> anyhow::Result<()> {
         Args::new(),
     )?;
 
-    // let bladerf: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
-
-    // setup_bladerf(
-    //     &bladerf,
-    //     SAMPLE_RATE as u32,
-    //     args.rf_rx_gain,
-    //     args.rx_frequency,
-    //     Direction::RX,
-    //     Channel::Rx0,
-    // )
-    // .with_context(|| "Unable to setup bladerf rx stuff.")?;
-
-    // let mut xb200 = setup_bladerf(
-    //     &bladerf,
-    //     SAMPLE_RATE as u32,
-    //     args.rf_tx_gain,
-    //     args.tx_frequency,
-    //     Direction::TX,
-    //     Channel::Tx0,
-    // )
-    // .with_context(|| "Unable to setup bladerf tx stuff.")?;
+    dev.set_frequency(
+        seify::Direction::Tx,
+        0,
+        cli_args.tx_frequency as f64,
+        Args::new(),
+    )?;
 
     log::debug!("Huh");
 
     // let gpio = xb200.take_periph().unwrap();
     // let trigger_pin = gpio.j13_1.into_output().unwrap();
 
-    // let bladerf = Box::new(bladerf);
-    // let bladerf: &'static BladeRf1 = Box::leak(bladerf);
-
-    // let bladerf_config = StreamConfig::default();
-
-    // log::debug!(
-    //     "Extra sanity check, Rx Frequency set: {} Hz",
-    //     bladerf.get_frequency(Channel::Rx0).unwrap()
-    // );
-    // log::debug!(
-    //     "Extra sanity check, Tx Frequency set: {} Hz",
-    //     bladerf.get_frequency(Channel::Tx0).unwrap()
-    // );
-
-    // bladerf
-    //     .set_frequency(Channel::Rx0, args.rx_frequency)
-    //     .unwrap();
-
-    // log::debug!(
-    //     "Extra sanity check, Rx Frequency set: {} Hz",
-    //     bladerf.get_frequency(Channel::Rx0).unwrap()
-    // );
-    // log::debug!(
-    //     "Extra sanity check, Tx Frequency set: {} Hz",
-    //     bladerf.get_frequency(Channel::Tx0).unwrap()
-    // );
-
-    // let rf_reciever = bladerf.rx_streamer::<ComplexI16>(bladerf_config)?;
-    let mut rf_reciever = dev.rx_streamer(&[0], Args::new())?;
-    let rf_transmitter = dev.tx_streamer(&[0], Args::new())?;
-    // let rf_transmitter = bladerf.tx_streamer::<ComplexI16>(bladerf_config)?;
+    let rf_reciever = Mutex::new(dev.rx_streamer(&[0], Args::new())?);
+    let rf_transmitter = Mutex::new(dev.tx_streamer(&[0], Args::new())?);
 
     let mut trx_state = TrxState::Recieving;
 
@@ -168,10 +127,6 @@ fn main() -> anyhow::Result<()> {
     pcm_output_dev.hw_params(&hwp).unwrap();
     let mut io_pb = pcm_input_dev.io_f32().unwrap();
     let io_cap = pcm_output_dev.io_f32().unwrap();
-
-    // return Ok(());
-    // println!("{:#?}", io_cap.readi(buf));
-    // return Ok(());
 
     // Make sure we don't start the stream too early
     let hwp = pcm_input_dev.hw_params_current().unwrap();
@@ -203,7 +158,7 @@ fn main() -> anyhow::Result<()> {
     let mut audio_capture_buffer = [0.0; AUDIO_BLOCK_SIZE];
 
     ///////////////////////////////////
-    ///
+
     let (ctrlc_tx, ctrlc_rx) = std::sync::mpsc::channel();
     ctrlc::set_handler(move || {
         let _ = ctrlc_tx.send(());
@@ -216,6 +171,8 @@ fn main() -> anyhow::Result<()> {
 
     let mut reciever_loop_call = || {
         rf_reciever
+            .try_lock()
+            .unwrap()
             .read(&mut [&mut iq_rx_buffer], BRF_TIMEOUT.as_micros() as i64)
             .with_context(|| "Cannot Read Samples")
             .unwrap();
@@ -229,10 +186,10 @@ fn main() -> anyhow::Result<()> {
             *output_samp = input_smap;
         }
 
-        assert_eq!(
-            io_pb.writei(&audio_playback_buffer[..]).unwrap(),
-            AUDIO_BLOCK_SIZE
-        );
+        // assert_eq!(
+        // io_pb.writei(&audio_playback_buffer[..]).unwrap(),
+        // AUDIO_BLOCK_SIZE
+        // );
     };
 
     let mut transmitter_loop_call = || {
@@ -249,12 +206,17 @@ fn main() -> anyhow::Result<()> {
             *a = b;
         }
 
-        // rf_transmitter.write(&iq_tx_buffer, BRF_TIMEOUT).unwrap();
+        rf_transmitter.try_lock().unwrap().write(
+            &[&iq_tx_buffer],
+            None,
+            false,
+            BRF_TIMEOUT.as_micros() as i64,
+        )
     };
 
     //////////////////////////////////
 
-    // rf_reciever.enable().unwrap();
+    rf_reciever.try_lock().unwrap().activate().unwrap();
 
     assert_eq!(
         io_pb.writei(&[0.0; AUDIO_BLOCK_SIZE]).unwrap(),
@@ -301,14 +263,14 @@ fn main() -> anyhow::Result<()> {
                     log::debug!("Setting up RX");
 
                     // Stop TX related devices
-                    // rf_transmitter.disable().unwrap();
+                    rf_transmitter.try_lock().unwrap().deactivate().unwrap();
                     pcm_output_dev.drop().unwrap();
 
                     // trigger_pin.write(PinState::Low).unwrap();
                     // thread::sleep(Duration::from_millis(20));
 
                     // Start up RX related devices
-                    // rf_reciever.enable().unwrap();
+                    rf_reciever.try_lock().unwrap().activate().unwrap();
                     pcm_input_dev.prepare().unwrap();
 
                     assert_eq!(
@@ -330,7 +292,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 TrxState::Transmitting => {
                     log::debug!("Setting up TX");
-                    // rf_reciever.disable().unwrap();
+                    rf_reciever.try_lock().unwrap().deactivate().unwrap();
                     pcm_input_dev.drop().unwrap();
 
                     // Set gpio
@@ -338,7 +300,7 @@ fn main() -> anyhow::Result<()> {
                     // thread::sleep(Duration::from_millis(20));
 
                     // Startup hardware
-                    // rf_transmitter.enable().unwrap();
+                    rf_transmitter.try_lock().unwrap().activate().unwrap();
                     pcm_output_dev.prepare().unwrap();
 
                     if pcm_output_dev.state() != State::Running {
