@@ -223,8 +223,9 @@ fn main() -> anyhow::Result<()> {
 
         let transmit_iter = transmit_chain
             .process(&audio_capture_buffer)
-            .map(|x| x * 0.9)
-            .map(brf_cf32_to_ci16);
+            // .map(|x| x * 0.9)
+            .map(brf_cf32_to_ci16)
+            .map(|a| a - ComplexI16::new(1, 1));
 
         for (a, b) in iq_tx_buffer.iter_mut().zip(transmit_iter) {
             *a = b;
