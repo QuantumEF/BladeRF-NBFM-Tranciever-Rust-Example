@@ -4,3 +4,6 @@
 test*.*
 *.wav
 *.sigmf-*
+*.html
+*.raw
+*.png

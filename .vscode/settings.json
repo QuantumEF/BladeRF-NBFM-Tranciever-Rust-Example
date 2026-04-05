@@ -1,0 +1,8 @@
+{
+  "terminal.integrated.env.linux": {
+    "RUSTFLAGS": "-C link-arg=-L/usr/lib -C link-arg=-L/usr/local/lib",
+  },
+  "rust-analyzer.cargo.extraEnv": {
+        "RUSTFLAGS": "-C link-arg=-L/usr/lib -C link-arg=-L/usr/local/lib",
+  },
+}

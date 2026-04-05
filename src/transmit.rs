@@ -49,7 +49,7 @@ impl<const N: usize> TransmitChain<f32, N> {
             .iter()
             .copied()
             // CTCSS
-            .map(|x| x + (self.ctsss.get_sample() * 0.3))
+            .map(|x| x + (self.ctsss.get_sample() * 1.0))
             // Audio Filter
             .map(|x| self.filter_audio.filter_sample(x))
             // first interpolation and filter
@@ -70,5 +70,107 @@ impl<const N: usize> TransmitChain<f32, N> {
         self.filter_b.reset();
         self.filter_audio.reset();
         self.ctsss.reset();
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{
+        f32::consts::PI,
+        fs::File,
+        io::{BufWriter, ErrorKind, Write},
+    };
+
+    use hound::WavReader;
+    use itertools::Itertools;
+    use plotly::{Plot, Scatter};
+
+    use crate::{AUDIO_2K5_SHARP, SHARP_TAPS, transmit::TransmitChain};
+
+    #[test]
+    #[ignore = "Manual"]
+    fn write_tx_file() {
+        const AUDIO_RATE: usize = 44100;
+        const INTERPOLATION_A: usize = 5;
+        const INTERPOLATION_B: usize = 4;
+        const FULL_INTERPOLATION: usize = INTERPOLATION_A * INTERPOLATION_B;
+        const SAMPLE_RATE: usize = AUDIO_RATE * FULL_INTERPOLATION;
+        const DECIMATION: usize = FULL_INTERPOLATION;
+
+        const AUDIO_BLOCK_SIZE: usize = 1024;
+
+        /// Kindof arbitrarily chosen for now.
+        const SAMPLES_PER_BLOCK: usize = DECIMATION * AUDIO_BLOCK_SIZE;
+
+        let mut transmit_chain = TransmitChain::new(
+            1.0,
+            SAMPLE_RATE as f32,
+            SHARP_TAPS,
+            SHARP_TAPS,
+            AUDIO_2K5_SHARP,
+            INTERPOLATION_A,
+            INTERPOLATION_B,
+            FULL_INTERPOLATION as f32,
+            110.9,
+            AUDIO_RATE as f32,
+        );
+
+        println!("Creating Audio");
+
+        let wav_file = File::open(
+            "/home/quantum_p/LocalDocs/bladerf-nbfm-transceiver/kn4vhm_test_mono_2.5k.wav",
+        )
+        .unwrap();
+        let mut audio = WavReader::new(wav_file).unwrap();
+
+        let wavspec = audio.spec();
+        assert_eq!(wavspec.sample_rate, 44100);
+        assert_eq!(wavspec.channels, 1);
+        println!("Wavespec: {wavspec:#?}");
+
+        let audio_samples: Vec<f32> = audio
+            .samples::<i16>()
+            .map(|x| x.unwrap())
+            .map(|x| (f32::from(x) / (1.0 * f32::from(i16::MAX))) * 5000.0)
+            .collect();
+
+        // let fake_audio_buf = {
+        //     let mut audio = Vec::new();
+        //     for i in 0..AUDIO_RATE {
+        //         audio.push(1000.0 * f32::sin(2.0 * PI * (1000.0 / AUDIO_RATE as f32) * (i as f32)));
+        //     }
+        //     audio
+        // };
+
+        // let plot = {
+        //     let mut p = Plot::new();
+        //     let s = Scatter::new(
+        //         (0..fake_audio_buf.len())
+        //             .map(|x| (x as f32) / AUDIO_RATE as f32)
+        //             .collect_vec(),
+        //         fake_audio_buf.clone(),
+        //     );
+        //     p.add_trace(s);
+        //     p
+        // };
+        // plot.write_html("audio_plot_sanity_check_for_tx_chain_test.html");
+
+        println!("Creating IQ");
+        let transmit_iter = transmit_chain.process(&audio_samples).collect_vec();
+
+        let mut test_transmit_file =
+            File::create(format!("test_transmit_file-{SAMPLE_RATE}sps.iq")).unwrap();
+        let mut writer = BufWriter::new(&mut test_transmit_file);
+
+        println!("Writing IQ");
+
+        for samp in transmit_iter {
+            writer.write_all(samp.re.to_le_bytes().as_slice()).unwrap();
+            writer.write_all(samp.im.to_le_bytes().as_slice()).unwrap();
+        }
+
+        writer.flush().unwrap();
+        let inner = writer.into_inner().unwrap();
+        inner.flush().unwrap();
     }
 }
