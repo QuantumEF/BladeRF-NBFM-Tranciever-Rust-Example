@@ -22,6 +22,14 @@ impl QuadratureMod<f32> {
         }
     }
 
+    /// Reminder that you should multiple by 1/sample_time
+    pub fn with_manual_const(mod_const: f32) -> Self {
+        QuadratureMod {
+            a_scaler_rename_me_TODO: mod_const,
+            phase_accumulator: Cell::new(0.0),
+        }
+    }
+
     /// Rough and approximate, but whatever
     /// Need to get better citations.
     pub fn with_deviation_and_max_bandwidth(

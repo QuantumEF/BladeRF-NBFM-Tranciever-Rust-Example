@@ -21,7 +21,7 @@ pub struct TransmitChain<T: Copy, const N: usize> {
 
 impl<const N: usize> TransmitChain<f32, N> {
     pub fn new(
-        kf: f32,
+        mod_const: f32,
         sample_rate: f32,
         taps_a: [f32; N],
         taps_b: [f32; N],
@@ -32,8 +32,9 @@ impl<const N: usize> TransmitChain<f32, N> {
         ctcss_tone: f32,
         audio_rate: f32,
     ) -> Self {
+        let modulator = QuadratureMod::with_manual_const(dbg!(mod_const * (1.0 / sample_rate)));
         Self {
-            modulator: QuadratureMod::with_kf(kf, 1.0 / sample_rate),
+            modulator,
             filter_a: ConvIter::new(taps_a, 0.0),
             filter_b: ConvIter::new(taps_b, 0.0),
             filter_audio: ConvIter::new(taps_audio, 0.0),
@@ -76,6 +77,7 @@ impl<const N: usize> TransmitChain<f32, N> {
 #[cfg(test)]
 mod test {
     use std::{
+        cmp::Ordering,
         f32::consts::PI,
         fs::File,
         io::{BufWriter, ErrorKind, Write},
@@ -85,7 +87,7 @@ mod test {
     use itertools::Itertools;
     use plotly::{Plot, Scatter};
 
-    use crate::{AUDIO_2K5_SHARP, SHARP_TAPS, transmit::TransmitChain};
+    use crate::{AUDIO_2K5_SHARP, SHARP_TAPS, fm_emphasis::PreEmphasis, transmit::TransmitChain};
 
     #[test]
     #[ignore = "Manual"]
@@ -102,8 +104,11 @@ mod test {
         /// Kindof arbitrarily chosen for now.
         const SAMPLES_PER_BLOCK: usize = DECIMATION * AUDIO_BLOCK_SIZE;
 
+        const AUDIO_AMPLITUDE: f32 = 0.8;
+        const MOD_CONST: f32 = 1000.0 * 2.0 * PI;
+
         let mut transmit_chain = TransmitChain::new(
-            1.0,
+            MOD_CONST,
             SAMPLE_RATE as f32,
             SHARP_TAPS,
             SHARP_TAPS,
@@ -124,15 +129,37 @@ mod test {
         let mut audio = WavReader::new(wav_file).unwrap();
 
         let wavspec = audio.spec();
-        assert_eq!(wavspec.sample_rate, 44100);
+        assert_eq!(wavspec.sample_rate, AUDIO_RATE as u32);
         assert_eq!(wavspec.channels, 1);
         println!("Wavespec: {wavspec:#?}");
 
-        let audio_samples: Vec<f32> = audio
+        let mut preemphasis = PreEmphasis::new(75e-6, 5000.0, AUDIO_RATE as f32);
+
+        let mut audio_samples: Vec<f32> = audio
             .samples::<i16>()
             .map(|x| x.unwrap())
-            .map(|x| (f32::from(x) / (1.0 * f32::from(i16::MAX))) * 5000.0)
+            .map(|x| f32::from(x) / (1.0 * f32::from(i16::MAX)))
+            .map(|x| preemphasis.process(x))
             .collect();
+
+        let audio_max = audio_samples
+            .iter()
+            .copied()
+            .max_by(|x, y| x.partial_cmp(&y.abs()).unwrap())
+            .unwrap();
+
+        let audio_scalar = AUDIO_AMPLITUDE / audio_max;
+
+        audio_samples.iter_mut().for_each(|x| *x *= audio_scalar);
+
+        // sanitch check
+        let audio_max = audio_samples
+            .iter()
+            .copied()
+            .max_by(|x, y| x.partial_cmp(&y.abs()).unwrap())
+            .unwrap();
+
+        // assert_eq!(audio_max, AUDIO_AMPLITUDE);
 
         // let fake_audio_buf = {
         //     let mut audio = Vec::new();

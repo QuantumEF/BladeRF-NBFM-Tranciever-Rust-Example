@@ -10,6 +10,7 @@ use bladerf::{
 pub mod circ_buffer;
 pub mod conv;
 // pub mod fsdr_rx_chain;
+pub mod fm_emphasis;
 pub mod integer_interpolator;
 pub mod keep_1_in_n;
 pub mod quadrature_demod;
