@@ -4,8 +4,8 @@ use itertools::Itertools;
 use num::{Complex, complex::Complex32, traits::ConstZero};
 
 use crate::{
-    conv::ConvIter, integer_interpolator::IntegerInterpolator, quadrature_mod::QuadratureMod,
-    sig_gen_iter::SimpleSigGen, zero_pad::Pad,
+    conv::ConvIter, fm_emphasis::PreEmphasis, integer_interpolator::IntegerInterpolator,
+    quadrature_mod::QuadratureMod, sig_gen_iter::SimpleSigGen, zero_pad::Pad,
 };
 
 pub struct TransmitChain<T: Copy, const N: usize> {
@@ -13,6 +13,7 @@ pub struct TransmitChain<T: Copy, const N: usize> {
     filter_a: ConvIter<T, T, N>,
     filter_b: ConvIter<T, T, N>,
     filter_audio: ConvIter<T, T, N>,
+    pre_ephasis: PreEmphasis,
     pad_a: Pad<T>,
     pad_b: Pad<T>,
     ctsss: SimpleSigGen,
@@ -37,6 +38,7 @@ impl<const N: usize> TransmitChain<f32, N> {
             modulator,
             filter_a: ConvIter::new(taps_a, 0.0),
             filter_b: ConvIter::new(taps_b, 0.0),
+            pre_ephasis: PreEmphasis::new(75e-6, 10000.0, sample_rate),
             filter_audio: ConvIter::new(taps_audio, 0.0),
             pad_a: Pad::new(0.0, interp_fac_a - 1),
             pad_b: Pad::new(0.0, interp_fac_b - 1),
@@ -51,6 +53,8 @@ impl<const N: usize> TransmitChain<f32, N> {
             .copied()
             // CTCSS
             .map(|x| x + (self.ctsss.get_sample() * 1.0))
+            // preemphasis
+            .map(|x| self.pre_ephasis.process(x))
             // Audio Filter
             .map(|x| self.filter_audio.filter_sample(x))
             // first interpolation and filter
@@ -105,7 +109,7 @@ mod test {
         const SAMPLES_PER_BLOCK: usize = DECIMATION * AUDIO_BLOCK_SIZE;
 
         const AUDIO_AMPLITUDE: f32 = 1.0;
-        const MOD_CONST: f32 = 500.0 * 2.0 * PI;
+        const MOD_CONST: f32 = 50000.0 * 2.0 * PI;
 
         let mut transmit_chain = TransmitChain::new(
             MOD_CONST,
@@ -133,13 +137,10 @@ mod test {
         assert_eq!(wavspec.channels, 1);
         println!("Wavespec: {wavspec:#?}");
 
-        let mut preemphasis = PreEmphasis::new(75e-6, 5000.0, AUDIO_RATE as f32);
-
         let mut audio_samples: Vec<f32> = audio
             .samples::<i16>()
             .map(|x| x.unwrap())
             .map(|x| f32::from(x) / (1.0 * f32::from(i16::MAX)))
-            .map(|x| preemphasis.process(x))
             .collect();
 
         let audio_max = audio_samples

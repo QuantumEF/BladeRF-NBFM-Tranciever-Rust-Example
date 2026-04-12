@@ -1,4 +1,5 @@
 use std::{
+    f32::consts::PI,
     iter::repeat,
     sync::mpsc::{self, Sender, TryRecvError},
     thread,
@@ -62,8 +63,8 @@ struct Args {
     #[arg(long, default_value = "10.0")]
     audio_output_gain: f32,
 
-    #[arg(long, default_value = "15700.0")]
-    kf: f32,
+    #[arg(long, default_value = "2500.0")]
+    frequency_deviation: f32,
 
     #[arg(long, default_value = "0.0")]
     ctcss: f32,
@@ -164,7 +165,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
     let mut transmit_chain = TransmitChain::new(
-        args.kf,
+        args.frequency_deviation * 2.0 * PI,
         SAMPLE_RATE as f32,
         SHARP_TAPS,
         SHARP_TAPS,
