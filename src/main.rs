@@ -1,5 +1,6 @@
 use std::{
     f32::consts::PI,
+    io::stdout,
     iter::repeat,
     sync::mpsc::{self, Sender, TryRecvError},
     thread,
@@ -74,6 +75,7 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     pretty_env_logger::init();
     log::info!("WTH");
+    // let mut stdout = stdout();
 
     let bladerf: BladeRf1 = BladeRfAny::open_first()?.try_into()?;
 
@@ -231,6 +233,15 @@ fn main() -> anyhow::Result<()> {
         for (a, b) in iq_tx_buffer.iter_mut().zip(transmit_iter) {
             *a = b;
         }
+
+        let audio_peak = audio_capture_buffer
+            .iter()
+            .copied()
+            .max_by(|x, y| x.partial_cmp(&y.abs()).unwrap());
+        print!(
+            "\r Audio Peak {:?}                                                              ",
+            audio_peak
+        );
 
         rf_transmitter.write(&iq_tx_buffer, BRF_TIMEOUT).unwrap();
     };
