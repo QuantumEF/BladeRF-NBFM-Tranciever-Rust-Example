@@ -32,7 +32,7 @@ impl<const N: usize> TransmitChain<f32, N> {
         ctcss_tone: f32,
         audio_rate: f32,
     ) -> Self {
-        let modulator = QuadratureMod::with_manual_const(dbg!(mod_const * (1.0 / sample_rate)));
+        let modulator = QuadratureMod::with_sensitivity(dbg!(mod_const * (1.0 / sample_rate)));
         Self {
             modulator,
             filter_a: ConvIter::new(taps_a, 0.0),
@@ -104,8 +104,8 @@ mod test {
         /// Kindof arbitrarily chosen for now.
         const SAMPLES_PER_BLOCK: usize = DECIMATION * AUDIO_BLOCK_SIZE;
 
-        const AUDIO_AMPLITUDE: f32 = 0.8;
-        const MOD_CONST: f32 = 1000.0 * 2.0 * PI;
+        const AUDIO_AMPLITUDE: f32 = 1.0;
+        const MOD_CONST: f32 = 500.0 * 2.0 * PI;
 
         let mut transmit_chain = TransmitChain::new(
             MOD_CONST,
@@ -159,28 +159,7 @@ mod test {
             .max_by(|x, y| x.partial_cmp(&y.abs()).unwrap())
             .unwrap();
 
-        // assert_eq!(audio_max, AUDIO_AMPLITUDE);
-
-        // let fake_audio_buf = {
-        //     let mut audio = Vec::new();
-        //     for i in 0..AUDIO_RATE {
-        //         audio.push(1000.0 * f32::sin(2.0 * PI * (1000.0 / AUDIO_RATE as f32) * (i as f32)));
-        //     }
-        //     audio
-        // };
-
-        // let plot = {
-        //     let mut p = Plot::new();
-        //     let s = Scatter::new(
-        //         (0..fake_audio_buf.len())
-        //             .map(|x| (x as f32) / AUDIO_RATE as f32)
-        //             .collect_vec(),
-        //         fake_audio_buf.clone(),
-        //     );
-        //     p.add_trace(s);
-        //     p
-        // };
-        // plot.write_html("audio_plot_sanity_check_for_tx_chain_test.html");
+        assert_eq!(audio_max, AUDIO_AMPLITUDE);
 
         println!("Creating IQ");
         let transmit_iter = transmit_chain.process(&audio_samples).collect_vec();
