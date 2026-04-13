@@ -1,6 +1,7 @@
 use std::{
     f32::consts::PI,
-    io::stdout,
+    fs::File,
+    io::{BufWriter, Write, stdout},
     iter::repeat,
     sync::mpsc::{self, Sender, TryRecvError},
     thread,
@@ -21,6 +22,7 @@ use bladerf_nbfm_transceiver::{
     AUDIO_2K5_SHARP, SHARP_TAPS, TrxState, recieve::RecieveChain, setup_bladerf,
     transmit::TransmitChain,
 };
+use bytemuck::checked::cast_slice;
 use clap::Parser;
 use crossterm::event::{Event, KeyCode, KeyEvent, poll as crossterm_poll, read as crossterm_read};
 use embedded_hal::digital::PinState;
@@ -194,6 +196,8 @@ fn main() -> anyhow::Result<()> {
     .with_context(|| "Cannot Set Ctrl-C Handler")?;
 
     let mut last_instant = Instant::now();
+
+    let mut debug_file = BufWriter::new(File::create_new("debug.iq").unwrap());
 
     //////////////////////////////////
 
