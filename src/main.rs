@@ -69,6 +69,9 @@ struct Args {
     #[arg(long, default_value = "2500.0")]
     frequency_deviation: f32,
 
+    #[arg(long)]
+    squelch: Option<f32>,
+
     #[arg(long, default_value = "0.0")]
     ctcss: f32,
 }
@@ -167,7 +170,8 @@ fn main() -> anyhow::Result<()> {
 
     //////////////////////////////////
 
-    let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
+    let mut rx_chain: RecieveChain<461, DECIMATION> =
+        RecieveChain::new(SHARP_TAPS, args.squelch.unwrap_or_default());
     let mut transmit_chain = TransmitChain::new(
         args.frequency_deviation * 2.0 * PI,
         SAMPLE_RATE as f32,
@@ -197,7 +201,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut last_instant = Instant::now();
 
-    let mut debug_file = BufWriter::new(File::create_new("debug.iq").unwrap());
+    // let mut debug_file = BufWriter::new(File::create_new("debug.iq").unwrap());
 
     //////////////////////////////////
 
@@ -210,11 +214,16 @@ fn main() -> anyhow::Result<()> {
         let audio_iter = rx_chain
             .process_buffer(&iq_rx_buffer)
             .map(|x| x * args.audio_output_gain)
+            .map(|x| if x.is_nan() { 0.0 } else { x })
             .zip(audio_playback_buffer.iter_mut());
+
+        log::info!("..");
 
         for (input_smap, output_samp) in audio_iter {
             *output_samp = input_smap;
         }
+
+        // log::info!("...: {audio_playback_buffer:?}");
 
         assert_eq!(
             io_pb.writei(&audio_playback_buffer[..]).unwrap(),
@@ -232,6 +241,8 @@ fn main() -> anyhow::Result<()> {
             .process(&audio_capture_buffer)
             // .map(|x| x * 0.9)
             .map(brf_cf32_to_ci16)
+            // Don't fully saturate the DAC I guess, sut sure if needed
+            // ACtually, I think is an absolutely terrible thing to do :/
             .map(|a| a - ComplexI16::new(1, 1));
 
         for (a, b) in iq_tx_buffer.iter_mut().zip(transmit_iter) {

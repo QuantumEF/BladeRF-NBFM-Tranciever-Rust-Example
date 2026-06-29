@@ -17,6 +17,8 @@ pub mod quadrature_demod;
 pub mod quadrature_mod;
 pub mod recieve;
 pub mod sig_gen_iter;
+pub mod sql;
+pub mod switch;
 pub mod transmit;
 pub mod zero_pad;
 
@@ -66,7 +68,10 @@ pub fn setup_bladerf(
     log::debug!("Configuring Xb200");
     let xb200 = device.get_xb200()?;
     xb200.set_path(direction, Xb200Path::Mix)?;
-    xb200.set_filterbank(direction, Xb200Filter::MHz144)?;
+    match direction {
+        Direction::RX => xb200.set_filterbank(direction, Xb200Filter::MHz144)?,
+        Direction::TX => xb200.set_filterbank(direction, Xb200Filter::MHz144)?,
+    }
 
     log::debug!("Tuning to {frequency} Hz for {channel:#?}");
     device.set_frequency(channel, frequency)?;

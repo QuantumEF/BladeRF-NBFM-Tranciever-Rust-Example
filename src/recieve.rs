@@ -1,20 +1,24 @@
 use bladerf::{ComplexI16, brf_ci16_to_cf32};
 use num::{complex::Complex32, traits::ConstZero};
 
-use crate::{conv::ConvIter, keep_1_in_n::Keep1InN, quadrature_demod::QuadratureDemod};
+use crate::{
+    conv::ConvIter, keep_1_in_n::Keep1InN, quadrature_demod::QuadratureDemod, sql::Squelch,
+};
 
 pub struct RecieveChain<const TAP_COUNT: usize, const DECIMATION: usize> {
     filter: ConvIter<f32, Complex32, TAP_COUNT>,
     demod: QuadratureDemod<f32>,
+    sql: Squelch,
     decimator: Keep1InN<DECIMATION>,
     // amplification: f32,
 }
 
 impl<const TAP_COUNT: usize, const DECIMATION: usize> RecieveChain<TAP_COUNT, DECIMATION> {
-    pub fn new(taps: [f32; TAP_COUNT]) -> Self {
+    pub fn new(taps: [f32; TAP_COUNT], sql_tresh: f32) -> Self {
         Self {
             filter: ConvIter::new(taps, Complex32::ZERO),
             demod: QuadratureDemod::new(Complex32::ZERO),
+            sql: Squelch::new(1024, sql_tresh),
             decimator: Keep1InN::new(),
             // amplification,
         }
@@ -25,6 +29,19 @@ impl<const TAP_COUNT: usize, const DECIMATION: usize> RecieveChain<TAP_COUNT, DE
             .iter()
             .copied()
             .map(brf_ci16_to_cf32)
+            .map(|x| {
+                // let avg = self.sql.average();
+                // log::info!("avg: {avg}");
+                if self.sql.check(x) {
+                    // log::info!("WTF1");
+                    // Complex32::ZERO
+                    x
+                } else {
+                    // log::info!("WTF2");
+                    Complex32::ZERO
+                    // x - 0.01
+                }
+            })
             .map(|x| self.filter.filter_sample(x))
             .map(|sample| self.demod.process(sample))
             .filter(|_| self.decimator.test_keep())
@@ -71,7 +88,7 @@ mod tests {
         const DECIMATION: usize = FULL_INTERPOLATION;
         const SHIFT_FREQUENCY_HZ: f32 = 385e3;
 
-        let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS);
+        let mut rx_chain: RecieveChain<461, DECIMATION> = RecieveChain::new(SHARP_TAPS, 0.0);
 
         let mut iq_file_buf = BufReader::new(File::open("/home/quantum_p/LocalDocs/seify-bladerf/gqrx_20260412_032934_146300000_882000_fc.sigmf-data").unwrap());
 
