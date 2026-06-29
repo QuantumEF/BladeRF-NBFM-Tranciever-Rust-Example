@@ -18,7 +18,7 @@ impl<const TAP_COUNT: usize, const DECIMATION: usize> RecieveChain<TAP_COUNT, DE
         Self {
             filter: ConvIter::new(taps, Complex32::ZERO),
             demod: QuadratureDemod::new(Complex32::ZERO),
-            sql: Squelch::new(1024, sql_tresh),
+            sql: Squelch::new(8192, sql_tresh),
             decimator: Keep1InN::new(),
             // amplification,
         }
